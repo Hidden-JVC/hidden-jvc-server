@@ -46,7 +46,9 @@ CREATE TABLE "Post" (
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE SET NULL
 );
 
-CREATE VIEW "TopicJSON" AS
+CREATE INDEX "Post_TopicId_Index" ON "Post" ("TopicId");
+
+CREATE OR REPLACE VIEW "TopicListJson" AS
     SELECT json_build_object(
         'Topic', "Topic".*,
         'LastPost', "LastPost".*,
@@ -56,7 +58,7 @@ CREATE VIEW "TopicJSON" AS
                     'Name', "User"."Name"
                 )
             END
-    ) as json, "Topic".*
+    ) as "Json", "Topic".*
     FROM "Topic"
     LEFT JOIN "User" ON "User"."Id" = "Topic"."UserId"
     LEFT JOIN LATERAL (
@@ -66,6 +68,40 @@ CREATE VIEW "TopicJSON" AS
         ORDER BY "Post"."CreationDate" DESC
         LIMIT 1
     ) "LastPost" ON TRUE
-    ORDER BY "LastPost"."CreationDate" DESC
+    ORDER BY "LastPost"."CreationDate" DESC;
+
+CREATE OR REPLACE VIEW "TopicPostsJson" AS
+    SELECT json_build_object(
+        'Topic', "Topic".*,
+        'User', json_build_object(
+            'Id', "User"."Id",
+            'Name', "User"."Name"
+        ),
+        'Posts', json_agg(
+            json_build_object(
+                'Post', "Post".*,
+                'User', json_build_object(
+                    'Id', "PostUser"."Id",
+                    'Name', "PostUser"."Name"
+                )
+            )
+        )
+    ) as "Json", "Topic".*
+    FROM "Topic"
+    LEFT JOIN "User" ON "User"."Id" = "Topic"."UserId"
+    LEFT JOIN LATERAL (
+        SELECT *
+        FROM "Post"
+        WHERE "Post"."TopicId" = "Topic"."Id"
+        ORDER BY "Post"."CreationDate" ASC
+        OFFSET 0
+        LIMIT 20
+    ) "Post" ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT *
+        FROM "User"
+        WHERE "User"."Id" = "Post"."UserId"
+    ) "PostUser" ON TRUE
+    GROUP BY "Topic"."Id", "User"."Id";
 
 -- DROP TABLE "Post"; DROP TABLE "Topic"; DROP TABLE "Session"; DROP TABLE "User"; DROP TYPE "UserType"

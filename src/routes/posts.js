@@ -16,30 +16,20 @@ router.get('/', async (req, res, next) => {
             }
         };
 
-        const query = database
-            .from('Post')
-            .where(conditions);
-
-        const [{ posts }] = await query.clone()
-            .select(database.raw(`COALESCE(json_agg(
-                json_build_object(
-                    'post', "Post".*,
-                    'user', CASE WHEN "User"."Id" IS NOT NULL
-                        THEN json_build_object(
-                            'Id', "User"."Id",
-                            'Name', "User"."Name"
-                        )
-                        ELSE NULL END
-                ) ORDER BY "Post"."CreationDate" DESC
-            ), '[]') as posts`))
-            .from('Post')
-            .leftJoin('User', 'User.Id', 'Post.UserId')
+        const result = await database
+            .select('json')
+            .from('PostJSON')
+            .where(conditions)
             .limit(pagination.limit)
             .offset(pagination.offset)
             .on('query', sqlLogger(debug));
 
-        const [{ count }] = await query.clone()
+        const posts = result.map((r) => r.json);
+
+        const [{ count }] = await database
             .select(database.raw('count(*)::integer'))
+            .from('Post')
+            .where(conditions)
             .on('query', sqlLogger(debug));
 
         res.json({ posts, count });

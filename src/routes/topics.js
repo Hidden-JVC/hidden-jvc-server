@@ -10,21 +10,18 @@ router.get('/', async (req, res, next) => {
         const pagination = parsePagination(req.query, 'Topic.CreationDate', 1, 5, 'DESC');
 
         const conditions = function () {
-            const { title } = req.query;
-            if (typeof title === 'string') {
-                this.where('Type', 'like', `%${title}%`);
-            }
+
         };
 
         const result = await database
-            .select('json')
-            .from('TopicJSON')
+            .select('Json')
+            .from('TopicListJson')
             .where(conditions)
             .limit(pagination.limit)
             .offset(pagination.offset)
             .on('query', sqlLogger(debug));
 
-        const topics = result.map((r) => r.json);
+        const topics = result.map((r) => r.Json);
 
         const [{ count }] = await database
             .select(database.raw('count(*)::integer'))
@@ -41,8 +38,8 @@ router.get('/', async (req, res, next) => {
 // /topics
 router.post('/', async (req, res, next) => {
     try {
-        const { title, userId, username, content } = req.body;
-
+        const { userId } = res.locals;
+        const { title, username, content } = req.body;
         if (typeof title !== 'string' || title.length === 0) {
             throw new Error('invalid arguments');
         }
@@ -80,7 +77,7 @@ router.post('/', async (req, res, next) => {
 
             res.json({ topicId });
         } else {
-            throw new Error('you must provide a userId or a usernale');
+            throw new Error('you must provide a userId or a username');
         }
     } catch (err) {
         next(err);
@@ -91,21 +88,10 @@ router.get('/:topicId', async (req, res, next) => {
     try {
         const { topicId } = req.params;
 
-        const [{ topic }] = await database
-            .select(database.raw(`COALESCE(json_agg(
-                json_build_object(
-                    'topic', "Topic".*,
-                    'author', CASE WHEN "User"."Id" IS NOT NULL
-                            THEN json_build_object(
-                                    'Id', "User"."Id",
-                                    'Name', "User"."Name"
-                                )
-                            ELSE NULL END
-                    )
-            ), '{ "topic": null, "author": null }') as topic`))
-            .from('Topic')
-            .leftJoin('User', 'User.Id', 'Topic.UserId')
-            .where('Topic.Id', '=', topicId);
+        const [{ Json: topic }] = await database
+            .select('Json')
+            .from('TopicPostsJson')
+            .where('Id', '=', topicId);
 
         res.json({ topic });
     } catch (err) {

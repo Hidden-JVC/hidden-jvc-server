@@ -28,7 +28,9 @@ router.post('/register', async (req, res, next) => {
             .insert({ UserId: userId }, 'Id')
             .into('Session');
 
-        res.json({ userId, sessionId });
+        const jwt = await createJWT(userId, name, sessionId);
+
+        res.json({ jwt });
     } catch (err) {
         next(err);
     }
@@ -55,6 +57,17 @@ router.post('/login', async (req, res, next) => {
 
         if (!match) {
             return next(new Error('invalid name or password'));
+        }
+
+        const [session] = await database
+            .select('*')
+            .from('Session')
+            .where('UserId', '=', user.Id);
+
+        if (session) {
+            await database('Session')
+                .where('UserId', '=', user.Id)
+                .del();
         }
 
         const [sessionId] = await database
