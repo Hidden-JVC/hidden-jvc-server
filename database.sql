@@ -24,7 +24,7 @@ CREATE TABLE "Topic" (
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
     "PostCount" INTEGER NOT NULL DEFAULT 0,
 
-    "UserId" INTEGER,
+    "UserId" INTEGER NULL,
     "Username" VARCHAR(20) NULL, -- only used when "UserId" is NULL
 
     PRIMARY KEY ("Id"),
@@ -33,10 +33,11 @@ CREATE TABLE "Topic" (
 
 CREATE TABLE "Post" (
     "Id" SERIAL,
-    "Content" VARCHAR(8000) NOT NULL,
+    "RawContent" VARCHAR(8000) NOT NULL,
+    "CompiledContent" VARCHAR(8000) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
 
-    "UserId" INTEGER,
+    "UserId" INTEGER NULL,
     "Username" VARCHAR(20) NULL, -- only used when "UserId" is NULL
 
     "TopicId" INTEGER NOT NULL,
@@ -104,4 +105,4 @@ CREATE OR REPLACE VIEW "TopicPostsJson" AS
     ) "PostUser" ON TRUE
     GROUP BY "Topic"."Id", "User"."Id";
 
--- DROP TABLE "Post"; DROP TABLE "Topic"; DROP TABLE "Session"; DROP TABLE "User"; DROP TYPE "UserType"
+-- DROP INDEX "Post_TopicId_Index"; DROP VIEW "TopicPostsJson"; DROP VIEW "TopicListJson"; DROP TABLE "Post"; DROP TABLE "Topic"; DROP TABLE "Session"; DROP TABLE "User"; DROP TYPE "UserType"
