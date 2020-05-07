@@ -21,8 +21,9 @@ CREATE TABLE "Session" (
 CREATE TABLE "Topic" (
     "Id" SERIAL,
     "Title" VARCHAR(300) NOT NULL,
-    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
-    "PostCount" INTEGER NOT NULL DEFAULT 0,
+    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
+    "Pinned" BOOLEAN NOT NULL DEFAULT FALSE,
+    "Locked" BOOLEAN NOT NULL DEFAULT FALSE,
 
     "UserId" INTEGER NULL,
     "Username" VARCHAR(20) NULL, -- only used when "UserId" is NULL
@@ -33,9 +34,8 @@ CREATE TABLE "Topic" (
 
 CREATE TABLE "Post" (
     "Id" SERIAL,
-    "RawContent" VARCHAR(8000) NOT NULL,
-    "CompiledContent" VARCHAR(8000) NOT NULL,
-    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
+    "Content" VARCHAR(8000) NOT NULL,
+    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
 
     "UserId" INTEGER NULL,
     "Username" VARCHAR(20) NULL, -- only used when "UserId" is NULL
@@ -49,60 +49,92 @@ CREATE TABLE "Post" (
 
 CREATE INDEX "Post_TopicId_Index" ON "Post" ("TopicId");
 
-CREATE OR REPLACE VIEW "TopicListJson" AS
-    SELECT json_build_object(
-        'Topic', "Topic".*,
-        'LastPost', "LastPost".*,
-        'Author', CASE WHEN "User"."Id" IS NULL THEN NULL
-            ELSE json_build_object(
+CREATE FUNCTION "TopicListJson" (
+    IN "InPinned" BOOLEAN DEFAULT NULL,
+    IN "InOffset" INTEGER DEFAULT 0,
+    IN "InLimit" INTEGER DEFAULT 20
+) RETURNS SETOF JSON AS
+$BODY$
+    BEGIN
+        RETURN QUERY SELECT json_build_object(
+            'Topic', "Topic".*,
+            'LastPostDate', "LastPost"."CreationDate",
+            'Author', CASE WHEN "User"."Id" IS NULL
+				THEN NULL
+                ELSE json_build_object(
+					'Id', "User"."Id",
+					'Name', "User"."Name"
+				)
+			END,
+			'PostsCount', (SELECT COUNT(*) FROM "Post" WHERE "Post"."TopicId" = "Topic"."Id")
+		)
+        FROM "Topic"
+        LEFT JOIN "User" ON "User"."Id" = "Topic"."UserId"
+		CROSS JOIN LATERAL (
+			SELECT MAX("CreationDate") AS "CreationDate"
+			FROM "Post"
+			WHERE "Post"."TopicId" = "Topic"."Id"
+		) "LastPost"
+        WHERE ("InPinned" IS NULL OR "Topic"."Pinned" = "InPinned")
+        ORDER BY "LastPost"."CreationDate" DESC
+        OFFSET "InOffset"
+        LIMIT "InLimit";
+    END
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE FUNCTION "TopicPostsJson" (
+    IN "InTopicId" INTEGER,
+    IN "PostOffset" INTEGER DEFAULT 0,
+    IN "PostLimit" INTEGER DEFAULT 20
+) RETURNS SETOF JSON AS
+$BODY$
+    BEGIN
+        RETURN QUERY SELECT json_build_object(
+            'Topic', "Topic".*,
+            'User', CASE WHEN "User"."Id" IS NULL THEN NULL
+                ELSE json_build_object(
                     'Id', "User"."Id",
                     'Name', "User"."Name"
                 )
-            END
-    ) as "Json", "Topic".*
-    FROM "Topic"
-    LEFT JOIN "User" ON "User"."Id" = "Topic"."UserId"
-    LEFT JOIN LATERAL (
-        SELECT *
-        FROM "Post"
-        WHERE "Post"."TopicId" = "Topic"."Id"
-        ORDER BY "Post"."CreationDate" DESC
-        LIMIT 1
-    ) "LastPost" ON TRUE
-    ORDER BY "LastPost"."CreationDate" DESC;
-
-CREATE OR REPLACE VIEW "TopicPostsJson" AS
-    SELECT json_build_object(
-        'Topic', "Topic".*,
-        'User', json_build_object(
-            'Id', "User"."Id",
-            'Name', "User"."Name"
-        ),
-        'Posts', json_agg(
-            json_build_object(
-                'Post', "Post".*,
-                'User', json_build_object(
-                    'Id', "PostUser"."Id",
-                    'Name', "PostUser"."Name"
+                END,
+            'Posts', json_agg(
+                json_build_object(
+                    'Post', json_build_object(
+                            'Id', "Post"."Id",
+                            'Content', "Post"."Content",
+                            'CreationDate', "Post"."CreationDate",
+                            'Username', "Post"."Username"
+                        ),
+                    'User', CASE WHEN "PostUser"."Id" IS NULL THEN NULL
+                        ELSE json_build_object(
+                            'Id', "PostUser"."Id",
+                            'Name', "PostUser"."Name"
+                        )
+                        END
                 )
-            )
+            ),
+            'PostsCount', MIN("Post"."Count")
         )
-    ) as "Json", "Topic".*
-    FROM "Topic"
-    LEFT JOIN "User" ON "User"."Id" = "Topic"."UserId"
-    LEFT JOIN LATERAL (
-        SELECT *
-        FROM "Post"
-        WHERE "Post"."TopicId" = "Topic"."Id"
-        ORDER BY "Post"."CreationDate" ASC
-        OFFSET 0
-        LIMIT 20
-    ) "Post" ON TRUE
-    LEFT JOIN LATERAL (
-        SELECT *
-        FROM "User"
-        WHERE "User"."Id" = "Post"."UserId"
-    ) "PostUser" ON TRUE
-    GROUP BY "Topic"."Id", "User"."Id";
+        FROM "Topic"
+        LEFT JOIN "User" ON "User"."Id" = "Topic"."UserId"
+        LEFT JOIN LATERAL (
+            SELECT *, COUNT(*) OVER() AS "Count"
+            FROM "Post"
+            WHERE "Post"."TopicId" = "Topic"."Id"
+            ORDER BY "Post"."CreationDate" ASC
+            OFFSET "PostOffset"
+            LIMIT "PostLimit"
+        ) "Post" ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT *
+            FROM "User"
+            WHERE "User"."Id" = "Post"."UserId"
+        ) "PostUser" ON TRUE
+        WHERE "Topic"."Id" = "InTopicId"
+        GROUP BY "Topic"."Id", "User"."Id";
+    END
+$BODY$
+LANGUAGE plpgsql;
 
--- DROP INDEX "Post_TopicId_Index"; DROP VIEW "TopicPostsJson"; DROP VIEW "TopicListJson"; DROP TABLE "Post"; DROP TABLE "Topic"; DROP TABLE "Session"; DROP TABLE "User"; DROP TYPE "UserType"
+-- DROP INDEX "Post_TopicId_Index"; DROP FUNCTION "TopicPostsJson"; DROP FUNCTION "TopicListJson"; DROP TABLE "Post"; DROP TABLE "Topic"; DROP TABLE "Session"; DROP TABLE "User"; DROP TYPE "UserType"

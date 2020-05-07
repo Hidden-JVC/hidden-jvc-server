@@ -1,4 +1,4 @@
-module.exports = function (options = {}, sort = 'Id', page = 1, limit = 10, order = 'asc') {
+module.exports = function (options = {}, sort = 'Id', page = 1, limit = 20, order = 'asc') {
     const pagination = { page, limit, sort, order };
 
     if (!isNaN(options.page)) {

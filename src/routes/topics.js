@@ -7,26 +7,31 @@ const { parsePagination, sqlLogger } = require('../helpers');
 router.get('/', async (req, res, next) => {
     try {
         const { debug } = res.locals;
+
+        req.query.limit = 20;
         const pagination = parsePagination(req.query, 'Topic.CreationDate', 1, 20, 'DESC');
 
-        const conditions = function () {
+        const topics = [];
 
-        };
+        if (pagination.page === 1) {
+            const result = await database
+                .select('*')
+                .from(database.raw('"TopicListJson"(?, ?, ?)', [true, 0, 5]))
+                .on('query', sqlLogger(debug));
+
+            result.forEach((row) => topics.push(row.TopicListJson));
+        }
 
         const result = await database
-            .select('Json')
-            .from('TopicListJson')
-            .where(conditions)
-            .limit(pagination.limit)
-            .offset(pagination.offset)
+            .select('*')
+            .from(database.raw('"TopicListJson"(?, ?, ?)', [false, pagination.offset, 20]))
             .on('query', sqlLogger(debug));
 
-        const topics = result.map((r) => r.Json);
+        result.forEach((row) => topics.push(row.TopicListJson));
 
         const [{ count }] = await database
             .select(database.raw('count(*)::integer'))
             .from('Topic')
-            .where(conditions)
             .on('query', sqlLogger(debug));
 
         res.json({ topics, count });
@@ -39,13 +44,9 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
     try {
         const { userId } = res.locals;
-        const { title, username, rawContent, compiledContent } = req.body;
+        const { title, username, content } = req.body;
 
-        if (typeof rawContent !== 'string' || rawContent.length === 0) {
-            throw new Error('invalid arguments');
-        }
-
-        if (typeof compiledContent !== 'string' || compiledContent.length === 0) {
+        if (typeof content !== 'string' || content.length === 0) {
             throw new Error('invalid arguments');
         }
 
@@ -64,7 +65,7 @@ router.post('/', async (req, res, next) => {
                 .into('Topic');
 
             await database
-                .insert({ RawContent: rawContent, CompiledContent: compiledContent, TopicId: topicId, UserId: userId })
+                .insert({ Content: content, TopicId: topicId, UserId: userId })
                 .into('Post');
 
             res.json({ topicId });
@@ -74,7 +75,7 @@ router.post('/', async (req, res, next) => {
                 .into('Topic');
 
             await database
-                .insert({ RawContent: rawContent, CompiledContent: compiledContent, TopicId: topicId, Username: username })
+                .insert({ Content: content, TopicId: topicId, Username: username })
                 .into('Post');
 
             res.json({ topicId });
@@ -90,10 +91,12 @@ router.get('/:topicId', async (req, res, next) => {
     try {
         const { topicId } = req.params;
 
-        const [{ Json: topic }] = await database
-            .select('Json')
-            .from('TopicPostsJson')
-            .where('Id', '=', topicId);
+        req.query.limit = 20;
+        const pagination = parsePagination(req.query, 'Json', 1, 20, 'ASC');
+
+        const [{ TopicPostsJson: topic }] = await database
+            .select('*')
+            .from(database.raw('"TopicPostsJson"(?, ?, 20)', [topicId, pagination.offset]));
 
         res.json({ topic });
     } catch (err) {
@@ -103,14 +106,11 @@ router.get('/:topicId', async (req, res, next) => {
 
 router.post('/:topicId', async (req, res, next) => {
     try {
+        const { userId } = res.locals;
         const { topicId } = req.params;
-        const { rawContent, compiledContent, userId, username } = req.body;
+        const { content, username } = req.body;
 
-        if (typeof rawContent !== 'string' || rawContent.length === 0) {
-            throw new Error('invalid arguments');
-        }
-
-        if (typeof compiledContent !== 'string' || compiledContent.length === 0) {
+        if (typeof content !== 'string' || content.length === 0) {
             throw new Error('invalid arguments');
         }
 
@@ -134,18 +134,18 @@ router.post('/:topicId', async (req, res, next) => {
             }
 
             const [postId] = await database
-                .insert({ RawContent: rawContent, CompiledContent: compiledContent, TopicId: topicId, UserId: userId }, 'Id')
+                .insert({ Content: content, TopicId: topicId, UserId: userId }, 'Id')
                 .into('Post');
 
             res.json({ postId });
         } else if (username) {
             const [postId] = await database
-                .insert({ RawContent: rawContent, CompiledContent: compiledContent, TopicId: topicId, Username: username }, 'Id')
+                .insert({ Content: content, TopicId: topicId, Username: username }, 'Id')
                 .into('Post');
 
             res.json({ postId });
         } else {
-            throw new Error('you must provide a userId or a usernale');
+            throw new Error('you must provide a userId or a username');
         }
     } catch (err) {
         next(err);
