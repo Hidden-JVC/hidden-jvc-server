@@ -8,6 +8,13 @@ const database = knex({
         user: process.env.DB_USER,
         password: process.env.DB_PASSWORD,
         database: process.env.DB_DATABASE
+    },
+    pool: {
+        afterCreate: function (connection, callback) {
+            connection.query('SET timezone = \'Europe/Paris\'', function (err) {
+                callback(err, connection);
+            });
+        }
     }
 });
 

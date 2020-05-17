@@ -8,7 +8,7 @@ CREATE TABLE "User" (
     "Name" VARCHAR(15) NOT NULL UNIQUE,
     "Password" CHAR(60) NOT NULL,
     "Type" "UserType" NOT NULL,
-    "CreationDate" TIMESTAMPTZ NOT NULL DEFAULT NOW()::timestamp(0),
+    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
 
     PRIMARY KEY ("Id")
 );
@@ -34,7 +34,7 @@ CREATE TABLE "JVCForum" (
 CREATE TABLE "JVCTopic" (
     "Id" INTEGER NOT NULL, -- Native JVC topic id
     "Title" VARCHAR(100) NOT NULL,
-    "CreationDate" TIMESTAMPTZ NOT NULL,
+    "CreationDate" TIMESTAMP NOT NULL,
 
     "FirstPostContent" VARCHAR(8000) NOT NULL,
     "FirstPostUsername" VARCHAR(15) NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE "JVCTopic" (
 CREATE TABLE "JVCPost" (
     "Id" SERIAL,
     "Content" VARCHAR(8000) NOT NULL,
-    "CreationDate" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
     "Page" INTEGER NOT NULL, -- the page on which the post was created, might not be accurate if some actual jvc posts are removed
 
     "UserId" INTEGER NULL, -- logged in user
@@ -66,7 +66,7 @@ CREATE TABLE "JVCPost" (
 CREATE TABLE "HiddenTopic" (
     "Id" SERIAL,
     "Title" VARCHAR(100) NOT NULL,
-    "CreationDate" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
     "Pinned" BOOLEAN NOT NULL DEFAULT FALSE,
     "Locked" BOOLEAN NOT NULL DEFAULT FALSE,
     "JVCBackup" BOOLEAN NOT NULL DEFAULT FALSE, -- Si TRUE alors le topic est un backup d'un vrai topic jvc qui a été supprimé
@@ -84,7 +84,7 @@ CREATE TABLE "HiddenTopic" (
 CREATE TABLE "HiddenPost" (
     "Id" SERIAL,
     "Content" VARCHAR(8000) NOT NULL,
-    "CreationDate" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
 
     "UserId" INTEGER NULL,
     "Username" VARCHAR(20) NULL, -- only used when "UserId" is NULL
@@ -125,30 +125,32 @@ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION "JVCTopicPostsJson" (
     IN "_TopicId" INTEGER,
-    IN "_startDate" TIMESTAMPTZ,
-    IN "_endDate" TIMESTAMPTZ
+    IN "_startDate" TIMESTAMP,
+    IN "_endDate" TIMESTAMP DEFAULT NULL
 ) RETURNS SETOF JSON AS
 $BODY$
     BEGIN
         RETURN QUERY SELECT json_build_object(
             'Topic', "JVCTopic".*,
-            'Posts', json_agg(
-                json_build_object(
-                    'Post', json_build_object(
+            'Posts', CASE WHEN MIN("JVCPost"."Id") IS NULL
+                THEN '[]'::json
+                ELSE json_agg(
+                    json_build_object(
+                        'Post', json_build_object(
                             'Id', "JVCPost"."Id",
                             'Content', "JVCPost"."Content",
                             'CreationDate', "JVCPost"."CreationDate",
                             'Username', "JVCPost"."Username",
                             'Page', "JVCPost"."Page"
                         ),
-                    'User', CASE WHEN "PostUser"."Id" IS NULL THEN NULL
-                        ELSE json_build_object(
-                            'Id', "PostUser"."Id",
-                            'Name', "PostUser"."Name"
-                        )
-                        END
-                )
-            ),
+                        'User', CASE WHEN "PostUser"."Id" IS NULL
+                            THEN NULL
+                            ELSE json_build_object(
+                                'Id', "PostUser"."Id",
+                                'Name', "PostUser"."Name"
+                            ) END
+                    )
+                ) END,
 			'Pages', (SELECT array_agg(DISTINCT "Page") FROM "JVCPost" WHERE "JVCPost"."JVCTopicId" = "JVCTopic"."Id")
         )
         FROM "JVCTopic"
@@ -157,7 +159,7 @@ $BODY$
             FROM "JVCPost"
             WHERE "JVCPost"."JVCTopicId" = "JVCTopic"."Id"
             AND "JVCPost"."CreationDate" >= "_startDate"
-            AND "JVCPost"."CreationDate" <= "_endDate"
+            AND ("_endDate" IS NULL OR "JVCPost"."CreationDate" <= "_endDate")
             ORDER BY "JVCPost"."CreationDate" ASC
         ) "JVCPost" ON TRUE
         LEFT JOIN LATERAL (

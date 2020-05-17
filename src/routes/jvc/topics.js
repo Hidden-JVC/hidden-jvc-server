@@ -5,15 +5,15 @@ const database = require('../../database.js');
 // /jvc/topics
 router.get('/', async (req, res, next) => {
     try {
-        const { jvcTopicIds } = req.query;
+        const { topicIds } = req.query;
 
-        if (typeof jvcTopicIds !== 'string') {
-            throw new Error('jvcTopicIds est requis');
+        if (typeof topicIds !== 'string') {
+            throw new Error('topicIds est requis');
         }
 
         const rows = await database
             .select('*')
-            .from(database.raw('"JVCTopicListJson"(?)', jvcTopicIds));
+            .from(database.raw('"JVCTopicListJson"(?)', topicIds));
 
         const topics = rows.map((row) => row.JVCTopicListJson);
 
@@ -23,6 +23,7 @@ router.get('/', async (req, res, next) => {
     }
 });
 
+// Creation of an hidden jvc post on a real jvc topic
 // /jvc/topics/:topicId
 router.post('/:topicId', async (req, res, next) => {
     try {
@@ -31,40 +32,8 @@ router.post('/:topicId', async (req, res, next) => {
 
         const { forum, topic, post } = req.body;
 
-        if (typeof forum !== 'object') {
-            throw new Error('forum est requis');
-        }
-
-        if (typeof topic !== 'object') {
-            throw new Error('topic est requis');
-        }
-
         if (typeof post !== 'object') {
             throw new Error('post est requis');
-        }
-
-        if (typeof forum.id !== 'number') {
-            throw new Error('forum.id est requis');
-        }
-
-        if (typeof forum.name !== 'string' || forum.name.length === 0) {
-            throw new Error('forum.name est requis');
-        }
-
-        if (typeof topic.title !== 'string' || topic.title.length === 0) {
-            throw new Error('topic.title est requis');
-        }
-
-        if (typeof topic.creationDate !== 'string' || topic.creationDate.length === 0) {
-            throw new Error('topic.creationDate est requis');
-        }
-
-        if (typeof topic.firstPostContent !== 'string' || topic.firstPostContent.length === 0) {
-            throw new Error('topic.firstPostContent est requis');
-        }
-
-        if (typeof topic.firstPostUsername !== 'string' || topic.firstPostUsername.length === 0) {
-            throw new Error('topic.firstPostUsername est requis');
         }
 
         if (typeof post.content !== 'string' || post.content.length === 0) {
@@ -94,8 +63,20 @@ router.post('/:topicId', async (req, res, next) => {
             .from('JVCForum')
             .where('Id', '=', forum.id);
 
-        // check name validity
+        // TODO: make sure the forum is real
         if (!jvcForum) {
+            if (typeof forum !== 'object') {
+                throw new Error('forum est requis');
+            }
+
+            if (typeof forum.id !== 'number') {
+                throw new Error('forum.id est requis');
+            }
+
+            if (typeof forum.name !== 'string' || forum.name.length === 0) {
+                throw new Error('forum.name est requis');
+            }
+
             await database
                 .insert({ Id: forum.id, Name: forum.name })
                 .into('JVCForum');
@@ -108,11 +89,35 @@ router.post('/:topicId', async (req, res, next) => {
 
         // TODO: make sure the topic is real
         if (!jvcTopic) {
+            if (typeof topic !== 'object') {
+                throw new Error('topic est requis');
+            }
+
+            if (typeof topic.title !== 'string' || topic.title.length === 0) {
+                throw new Error('topic.title est requis');
+            }
+
+            if (typeof topic.viewId !== 'number') {
+                throw new Error('topic.viewId est requis');
+            }
+
+            if (typeof topic.firstPostDate !== 'string' || topic.firstPostDate.length === 0) {
+                throw new Error('topic.firstPostDate est requis');
+            }
+
+            if (typeof topic.firstPostContent !== 'string' || topic.firstPostContent.length === 0) {
+                throw new Error('topic.firstPostContent est requis');
+            }
+
+            if (typeof topic.firstPostUsername !== 'string' || topic.firstPostUsername.length === 0) {
+                throw new Error('topic.firstPostUsername est requis');
+            }
+
             const topicData = {
                 Id: topicId,
                 Title: topic.title,
                 JVCForumId: forum.id,
-                CreationDate: topic.creationDate,
+                CreationDate: topic.firstPostDate,
                 FirstPostContent: topic.firstPostContent,
                 FirstPostUsername: topic.firstPostUsername
             };
@@ -135,19 +140,21 @@ router.post('/:topicId', async (req, res, next) => {
 router.get('/:topicId', async (req, res, next) => {
     try {
         const { topicId } = req.params;
-        const { startDate, endDate } = req.query;
+        let { startDate, endDate } = req.query;
 
         if (typeof startDate !== 'string') {
             throw new Error('startDate est requis');
         }
 
-        if (typeof endDate !== 'string') {
-            throw new Error('endDate est requis');
+        if (!endDate) {
+            endDate = null;
         }
 
-        const [{ JVCTopicPostsJson: topic }] = await database
+        const result = await database
             .select('*')
             .from(database.raw('"JVCTopicPostsJson"(?, ?, ?)', [topicId, startDate, endDate]));
+
+        const topic = result.length > 0 ? result[0].JVCTopicPostsJson : null;
 
         res.json({ topic });
     } catch (err) {
