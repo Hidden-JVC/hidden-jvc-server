@@ -98,6 +98,46 @@ CREATE TABLE "HiddenPost" (
 
 CREATE INDEX "HiddenPost_TopicId_Index" ON "HiddenPost" ("HiddenTopicId");
 
+CREATE OR REPLACE FUNCTION "JVCForumJson" (
+    IN "_Offset" INTEGER DEFAULT 0,
+    IN "_Limit" INTEGER DEFAULT 20
+) RETURNS SETOF JSON AS
+$BODY$
+    BEGIN
+        RETURN QUERY SELECT json_build_object(
+            'Forum', "JVCForum".*,
+			'JVCTopicCount', (
+				SELECT COUNT(*)
+				FROM "JVCTopic"
+			    WHERE "JVCForumId" = "JVCForum"."Id"
+			 ),
+			'JVCPostCount', (
+				SELECT COUNT(*)
+				FROM "JVCPost"
+				JOIN "JVCTopic"
+					ON "JVCTopic"."Id" = "JVCPost"."JVCTopicId"
+				WHERE  "JVCTopic"."JVCForumId" = "JVCForum"."Id"
+			),
+			'HiddenTopicCount', (
+				SELECT COUNT(*)
+				FROM "HiddenTopic"
+				WHERE "JVCForumId" = "JVCForum"."Id"
+		 	),
+			'HiddenPostCount', (
+				SELECT COUNT(*)
+				FROM "HiddenPost"
+				JOIN "HiddenTopic"
+					ON "HiddenTopic"."Id" = "HiddenPost"."HiddenTopicId"
+				WHERE  "HiddenTopic"."JVCForumId" = "JVCForum"."Id"
+		 	)
+		)
+        FROM "JVCForum"
+        OFFSET "_Offset"
+        LIMIT "_Limit";
+    END
+$BODY$
+LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION "JVCTopicListJson" (
 	IN "_TopicIds" VARCHAR DEFAULT NULL,
     IN "_Offset" INTEGER DEFAULT 0,
@@ -174,6 +214,7 @@ $BODY$
 LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION "HiddenTopicListJson" (
+    IN "_ForumId" INTEGER DEFAULT NULL,
     IN "_Pinned" BOOLEAN DEFAULT NULL,
     IN "_Offset" INTEGER DEFAULT 0,
     IN "_Limit" INTEGER DEFAULT 20
@@ -200,6 +241,7 @@ $BODY$
 			WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
 		) "LastHiddenPost"
         WHERE ("_Pinned" IS NULL OR "HiddenTopic"."Pinned" = "_Pinned")
+        AND ("_ForumId" IS NULL OR "HiddenTopic"."JVCForumId" = "_ForumId")
         ORDER BY "LastHiddenPost"."CreationDate" DESC
         OFFSET "_Offset"
         LIMIT "_Limit";

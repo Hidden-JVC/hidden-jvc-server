@@ -7,6 +7,7 @@ const { parsePagination, sqlLogger } = require('../../helpers');
 router.get('/', async (req, res, next) => {
     try {
         const { debug } = res.locals;
+        const { forumId } = req.query;
 
         req.query.limit = 20;
         const pagination = parsePagination(req.query, 'TopicListJson', 1, 20, 'DESC');
@@ -17,7 +18,7 @@ router.get('/', async (req, res, next) => {
             // pinned topics
             const result = await database
                 .select('*')
-                .from(database.raw('"HiddenTopicListJson"(?, ?, ?)', [true, 0, 5]))
+                .from(database.raw('"HiddenTopicListJson"(?, ?, ?, ?)', [forumId, true, 0, 5]))
                 .on('query', sqlLogger(debug));
 
             result.forEach((row) => topics.push(row.HiddenTopicListJson));
@@ -25,7 +26,7 @@ router.get('/', async (req, res, next) => {
 
         const result = await database
             .select('*')
-            .from(database.raw('"HiddenTopicListJson"(?, ?, ?)', [false, pagination.offset, 20]))
+            .from(database.raw('"HiddenTopicListJson"(?, ?, ?, ?)', [forumId, false, pagination.offset, 20]))
             .on('query', sqlLogger(debug));
 
         result.forEach((row) => topics.push(row.HiddenTopicListJson));
