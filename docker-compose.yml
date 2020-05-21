@@ -8,12 +8,14 @@ services:
       POSTGRES_DB: HiddenJVC
       POSTGRES_USER: hidden-jvc-user
       POSTGRES_PASSWORD: aze
+    volumes:
+      - ./database.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
 
   hidden-pgadmin:
     container_name: hidden-pgadmin
-    image: dpage/pgadmin4:4.20
+    image: dpage/pgadmin4:4.21
     depends_on:
       - hidden-database
     environment:

@@ -147,7 +147,7 @@ $BODY$
     BEGIN
         RETURN QUERY SELECT json_build_object(
             'Topic', "JVCTopic".*,
-			'PostsCount', (SELECT COUNT(*) FROM "JVCPost" WHERE "JVCPost"."JVCTopicId" = "JVCTopic"."Id")
+            'PostsCount', (SELECT COUNT(*) FROM "JVCPost" WHERE "JVCPost"."JVCTopicId" = "JVCTopic"."Id")
 		)
         FROM "JVCTopic"
 		CROSS JOIN LATERAL (
@@ -242,7 +242,7 @@ $BODY$
 		) "LastHiddenPost"
         WHERE ("_Pinned" IS NULL OR "HiddenTopic"."Pinned" = "_Pinned")
         AND ("_ForumId" IS NULL OR "HiddenTopic"."JVCForumId" = "_ForumId")
-        ORDER BY "LastHiddenPost"."CreationDate" DESC
+        ORDER BY "HiddenTopic"."Pinned" DESC, "LastHiddenPost"."CreationDate" DESC
         OFFSET "_Offset"
         LIMIT "_Limit";
     END
