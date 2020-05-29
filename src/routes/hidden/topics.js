@@ -12,24 +12,12 @@ router.get('/', async (req, res, next) => {
         req.query.limit = 20;
         const pagination = parsePagination(req.query, 'TopicListJson', 1, 20, 'DESC');
 
-        const topics = [];
-
-        if (pagination.page === 1) {
-            // pinned topics
-            const result = await database
-                .select('*')
-                .from(database.raw('"HiddenTopicListJson"(?, ?, ?, ?)', [forumId, true, 0, 5]))
-                .on('query', sqlLogger(debug));
-
-            result.forEach((row) => topics.push(row.HiddenTopicListJson));
-        }
-
         const result = await database
             .select('*')
-            .from(database.raw('"HiddenTopicListJson"(?, ?, ?, ?)', [forumId, false, pagination.offset, 20]))
+            .from(database.raw('"HiddenTopicListJson"(?, ?, ?)', [forumId, pagination.offset, 20]))
             .on('query', sqlLogger(debug));
 
-        result.forEach((row) => topics.push(row.HiddenTopicListJson));
+        const topics = result.map((row) => row.HiddenTopicListJson);
 
         const [{ count }] = await database
             .select(database.raw('count(*)::integer'))
@@ -119,13 +107,17 @@ router.post('/', async (req, res, next) => {
 router.get('/:topicId', async (req, res, next) => {
     try {
         const { topicId } = req.params;
+        let { userId } = req.query;
+        if (!userId) {
+            userId = null;
+        }
 
         req.query.limit = 20;
         const pagination = parsePagination(req.query, 'Json', 1, 20, 'ASC');
 
         const [{ HiddenTopicPostsJson: topic }] = await database
             .select('*')
-            .from(database.raw('"HiddenTopicPostsJson"(?, ?, 20)', [topicId, pagination.offset]));
+            .from(database.raw('"HiddenTopicPostsJson"(?, ?, 20, ?)', [topicId, pagination.offset, userId]));
 
         res.json({ topic });
     } catch (err) {
