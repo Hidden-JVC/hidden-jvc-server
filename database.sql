@@ -2,7 +2,7 @@ SET timezone = 'Europe/Paris';
 
 CREATE TYPE "UserType" AS ENUM ('User', 'Moderator', 'Admin');
 
--- Un utilisateur d'Hidden JVC
+-- Hidden JVC registered account
 CREATE TABLE "User" (
     "Id" SERIAL,
     "Name" VARCHAR(15) NOT NULL UNIQUE,
@@ -13,7 +13,7 @@ CREATE TABLE "User" (
     PRIMARY KEY ("Id")
 );
 
--- La session lié à un utilisateurs
+-- User session
 CREATE TABLE "Session" (
     "Id" SERIAL,
 
@@ -22,7 +22,7 @@ CREATE TABLE "Session" (
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE
 );
 
--- Représente un forum JVC (ex: Forum 18-25 ans["Id"=51] ou Forum Informatique["Id"=1])
+-- Represents a real JVC forum (eg: Forum 18-25 ans["Id"=51] or Forum Informatique["Id"=1])
 CREATE TABLE "JVCForum" (
     "Id" INTEGER NOT NULL, -- Native JVC forum id
     "Name" VARCHAR(200) NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE "JVCForum" (
     PRIMARY KEY ("Id")
 );
 
--- Représente un topic natif de JVC
+-- Represents a real JVC topic
 CREATE TABLE "JVCTopic" (
     "Id" INTEGER NOT NULL, -- Native JVC topic id
     "Title" VARCHAR(100) NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE "JVCTopic" (
     FOREIGN KEY ("JVCForumId") REFERENCES "JVCForum" ("Id") ON DELETE CASCADE
 );
 
--- Représente un post d'Hidden JVC sur un topic natif JVC
+-- Represents an Hidden JVC post on a real JVC topic
 CREATE TABLE "JVCPost" (
     "Id" SERIAL,
     "Content" VARCHAR(8000) NOT NULL,
@@ -62,7 +62,7 @@ CREATE TABLE "JVCPost" (
     FOREIGN KEY ("JVCTopicId") REFERENCES "JVCTopic" ("Id") ON DELETE CASCADE
 );
 
--- Représente un topic d'Hidden JVC complétement indépendant de JVC
+-- Represents an indepandant Hidden JVC topic
 CREATE TABLE "HiddenTopic" (
     "Id" SERIAL,
     "Title" VARCHAR(100) NOT NULL,
@@ -80,7 +80,7 @@ CREATE TABLE "HiddenTopic" (
     FOREIGN KEY ("JVCForumId") REFERENCES "JVCForum" ("Id") ON DELETE CASCADE
 );
 
--- Représente un post sur un topic indépendant d'Hidden JVC
+-- Represents an indepandant Hidden JVC post
 CREATE TABLE "HiddenPost" (
     "Id" SERIAL,
     "Content" VARCHAR(8000) NOT NULL,
@@ -98,6 +98,7 @@ CREATE TABLE "HiddenPost" (
 
 CREATE INDEX "HiddenPost_TopicId_Index" ON "HiddenPost" ("HiddenTopicId");
 
+-- List of forums
 CREATE OR REPLACE FUNCTION "JVCForumJson" (
     IN "_Offset" INTEGER DEFAULT 0,
     IN "_Limit" INTEGER DEFAULT 20
@@ -138,8 +139,9 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
+-- List of JVCTopic
 CREATE OR REPLACE FUNCTION "JVCTopicListJson" (
-	IN "_TopicIds" VARCHAR DEFAULT NULL,
+	IN "_TopicIds" VARCHAR DEFAULT NULL, -- comma separated list of JVCTopic Id
     IN "_Offset" INTEGER DEFAULT 0,
     IN "_Limit" INTEGER DEFAULT 20
 ) RETURNS SETOF JSON AS
@@ -163,6 +165,7 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
+-- List of post from a JVCTopic between a time span
 CREATE OR REPLACE FUNCTION "JVCTopicPostsJson" (
     IN "_TopicId" INTEGER,
     IN "_startDate" TIMESTAMP,
@@ -213,11 +216,13 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
+-- List of HiddenJVCTopic
 CREATE OR REPLACE FUNCTION "HiddenTopicListJson" (
-    IN "_ForumId" INTEGER DEFAULT NULL,
-    IN "_Pinned" BOOLEAN DEFAULT NULL,
+    IN "_ForumId" INTEGER,
     IN "_Offset" INTEGER DEFAULT 0,
-    IN "_Limit" INTEGER DEFAULT 20
+    IN "_Limit" INTEGER DEFAULT 20,
+    IN "_startDate" TIMESTAMP DEFAULT NULL,
+    IN "_endDate" TIMESTAMP DEFAULT NULL
 ) RETURNS SETOF JSON AS
 $BODY$
     BEGIN
@@ -240,8 +245,9 @@ $BODY$
 			FROM "HiddenPost"
 			WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
 		) "LastHiddenPost"
-        WHERE ("_Pinned" IS NULL OR "HiddenTopic"."Pinned" = "_Pinned")
-        AND ("_ForumId" IS NULL OR "HiddenTopic"."JVCForumId" = "_ForumId")
+        WHERE "HiddenTopic"."JVCForumId" = "_ForumId"
+        AND ("_startDate" IS NULL OR "LastHiddenPost"."CreationDate" >= "_startDate")
+        AND ("_endDate" IS NULL OR "LastHiddenPost"."CreationDate" <= "_endDate")
         ORDER BY "HiddenTopic"."Pinned" DESC, "LastHiddenPost"."CreationDate" DESC
         OFFSET "_Offset"
         LIMIT "_Limit";
@@ -249,10 +255,12 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
+-- List of post from an HiddenJVCTopic
 CREATE OR REPLACE FUNCTION "HiddenTopicPostsJson" (
     IN "_TopicId" INTEGER,
     IN "_PostOffset" INTEGER DEFAULT 0,
-    IN "_PostLimit" INTEGER DEFAULT 20
+    IN "_PostLimit" INTEGER DEFAULT 20,
+    IN "_UserId" INTEGER DEFAULT NULL -- Used to only get post from a certain user
 ) RETURNS SETOF JSON AS
 $BODY$
     BEGIN
@@ -298,6 +306,7 @@ $BODY$
             WHERE "User"."Id" = "HiddenPost"."UserId"
         ) "PostUser" ON TRUE
         WHERE "HiddenTopic"."Id" = "_TopicId"
+        AND ("_UserId" IS NULL OR ("HiddenPost"."UserId" = "_UserId"))
         GROUP BY "HiddenTopic"."Id", "User"."Id";
     END
 $BODY$
