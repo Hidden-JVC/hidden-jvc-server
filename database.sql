@@ -80,6 +80,21 @@ CREATE TABLE "HiddenTopic" (
     FOREIGN KEY ("JVCForumId") REFERENCES "JVCForum" ("Id") ON DELETE CASCADE
 );
 
+CREATE TABLE "HiddenTag" (
+    "Id" SERIAL,
+    "Name" VARCHAR(100) NOT NULL,
+
+    PRIMARY KEY ("Id")
+);
+
+CREATE TABLE "HiddenTopicTag" (
+    "TopicId" INTEGER NOT NULL,
+    "TagId" INTEGER NOT NULL,
+
+    FOREIGN KEY ("TopicId") REFERENCES "HiddenTopic" ("Id"),
+    FOREIGN KEY ("TagId") REFERENCES "HiddenTag" ("Id")
+);
+
 -- Represents an indepandant Hidden JVC post
 CREATE TABLE "HiddenPost" (
     "Id" SERIAL,
@@ -216,7 +231,7 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
--- List of HiddenJVCTopic
+-- List of HiddenTopic
 CREATE OR REPLACE FUNCTION "HiddenTopicListJson" (
     IN "_ForumId" INTEGER,
     IN "_Offset" INTEGER DEFAULT 0,
@@ -236,7 +251,18 @@ $BODY$
 					'Name', "User"."Name"
 				)
 			END,
-			'PostsCount', (SELECT COUNT(*) FROM "HiddenPost" WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id") - 1
+			'Tags', (
+                SELECT array_agg("Name")
+                FROM "HiddenTag"
+                JOIN "HiddenTopicTag"
+                ON "HiddenTag"."Id" = "HiddenTopicTag"."TagId"
+                AND "HiddenTopicTag"."TopicId" = "HiddenTopic"."Id"
+            ),
+			'PostsCount', (
+                SELECT COUNT(*)
+                FROM "HiddenPost"
+                WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
+            ) - 1
 		)
         FROM "HiddenTopic"
         LEFT JOIN "User" ON "User"."Id" = "HiddenTopic"."UserId"
@@ -246,8 +272,8 @@ $BODY$
 			WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
 		) "LastHiddenPost"
         WHERE "HiddenTopic"."JVCForumId" = "_ForumId"
-        AND ("_startDate" IS NULL OR "LastHiddenPost"."CreationDate" >= "_startDate")
-        AND ("_endDate" IS NULL OR "LastHiddenPost"."CreationDate" <= "_endDate")
+        AND ("_startDate" IS NULL OR "LastHiddenPost"."CreationDate" <= "_startDate")
+        AND ("_endDate" IS NULL OR "LastHiddenPost"."CreationDate" >= "_endDate")
         ORDER BY "HiddenTopic"."Pinned" DESC, "LastHiddenPost"."CreationDate" DESC
         OFFSET "_Offset"
         LIMIT "_Limit";
@@ -255,7 +281,7 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
--- List of post from an HiddenJVCTopic
+-- List of post from an HiddenTopic
 CREATE OR REPLACE FUNCTION "HiddenTopicPostsJson" (
     IN "_TopicId" INTEGER,
     IN "_PostOffset" INTEGER DEFAULT 0,
@@ -313,10 +339,13 @@ $BODY$
 LANGUAGE plpgsql;
 
 -- DROP INDEX "HiddenPost_TopicId_Index";
+-- DROP FUNCTION "JVCForumJson";
 -- DROP FUNCTION "JVCTopicListJson";
 -- DROP FUNCTION "JVCTopicPostsJson";
 -- DROP FUNCTION "HiddenTopicListJson";
 -- DROP FUNCTION "HiddenTopicPostsJson";
+-- DROP TABLE "HiddenTopicTag";
+-- DROP TABLE "HiddenTag";
 -- DROP TABLE "HiddenPost";
 -- DROP TABLE "HiddenTopic";
 -- DROP TABLE "JVCPost";

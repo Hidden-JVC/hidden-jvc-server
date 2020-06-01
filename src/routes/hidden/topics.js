@@ -7,14 +7,21 @@ const { parsePagination, sqlLogger } = require('../../helpers');
 router.get('/', async (req, res, next) => {
     try {
         const { debug } = res.locals;
-        const { forumId } = req.query;
+        let { forumId, startDate, endDate } = req.query;
 
         req.query.limit = 20;
         const pagination = parsePagination(req.query, 'TopicListJson', 1, 20, 'DESC');
 
+        if (!startDate) {
+            startDate = null;
+        }
+        if (!endDate) {
+            endDate = null;
+        }
+
         const result = await database
             .select('*')
-            .from(database.raw('"HiddenTopicListJson"(?, ?, ?)', [forumId, pagination.offset, 20]))
+            .from(database.raw('"HiddenTopicListJson"(?, ?, ?, ?, ?)', [forumId, pagination.offset, 20, startDate, endDate]))
             .on('query', sqlLogger(debug));
 
         const topics = result.map((row) => row.HiddenTopicListJson);
