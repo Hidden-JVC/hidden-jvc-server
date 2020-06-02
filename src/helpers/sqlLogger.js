@@ -1,4 +1,4 @@
-const { sqlLogger } = require('../logger.js');
+const { sqlLogger } = require('./logger.js');
 
 module.exports = function (debug) {
     if (debug) {

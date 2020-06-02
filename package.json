@@ -2,7 +2,7 @@
     "name": "hidden-jvc-server",
     "version": "0.1.0",
     "scripts": {
-        "start": "node src/server.js"
+        "start": "node src/index.js"
     },
     "dependencies": {
         "bcrypt": "^4.0.1",
@@ -13,6 +13,7 @@
         "jsonwebtoken": "^8.5.1",
         "knex": "^0.21.0",
         "pg": "^8.0.3",
+        "socket.io": "^2.3.0",
         "winston": "^3.2.1"
     },
     "devDependencies": {

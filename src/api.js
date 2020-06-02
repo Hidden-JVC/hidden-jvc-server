@@ -2,12 +2,11 @@ const cors = require('cors');
 const express = require('express');
 const bodyParser = require('body-parser');
 
-require('dotenv').config();
 
 const routes = require('./routes');
 const database = require('./database.js');
 const { authenticate } = require('./middlewares');
-const { accessLogger, logger } = require('./logger.js');
+const { accessLogger, logger } = require('./helpers/logger.js');
 
 const app = express();
 
@@ -49,10 +48,7 @@ app.use(function (err, req, res, next) { // eslint-disable-line no-unused-vars
     });
 });
 
-const port = process.env.PORT;
-const server = app.listen(port, () => console.log(`listening on port: ${port}`));
+const port = process.env.API_PORT;
+const server = app.listen(port, () => console.log(`api listening on port: ${port}`));
 
-process.on('SIGINT', () => {
-    server.close();
-    database.destroy();
-});
+module.exports = server;
