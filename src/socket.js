@@ -2,8 +2,8 @@ const server = require('http').createServer();
 
 const io = require('socket.io')(server);
 
-let forumsCount = {};
-let topicsCount = {};
+let forums = {};
+let topics = {};
 
 io.on('connection', (socket) => {
     const ip = socket.request.connection.remoteAddress;
@@ -16,32 +16,32 @@ io.on('connection', (socket) => {
         }
         forumId = data.forumId;
 
-        if (!Array.isArray(forumsCount[forumId])) {
-            forumsCount[forumId] = [];
+        if (!Array.isArray(forums[forumId])) {
+            forums[forumId] = [];
         }
 
-        if (!forumsCount[forumId].includes(ip)) {
-            forumsCount[forumId].push(ip);
+        if (!forums[forumId].includes(ip)) {
+            forums[forumId].push(ip);
         }
 
         if (typeof data.hidden === 'boolean' && typeof data.topicId === 'number') {
-            topicKey = `${data.hidden ? 1 : 0}-${data.topicId}`;
+            topicKey = `${forumId}-${data.hidden ? 1 : 0}-${data.topicId}`;
 
-            if (!Array.isArray(topicsCount[topicKey])) {
-                topicsCount[topicKey] = [];
+            if (!Array.isArray(topics[topicKey])) {
+                topics[topicKey] = [];
             }
 
-            if (!topicsCount[topicKey].includes(ip)) {
-                topicsCount[topicKey].push(ip);
+            if (!topics[topicKey].includes(ip)) {
+                topics[topicKey].push(ip);
             }
         }
 
         const result = {
-            forumCount: forumsCount[forumId].length
+            forumCount: forums[forumId].length
         };
 
         if (topicKey !== null) {
-            result.topicCount = topicsCount[topicKey].length;
+            result.topicCount = topics[topicKey].length;
         }
 
         callback(result);
@@ -52,15 +52,17 @@ io.on('connection', (socket) => {
             return;
         }
 
-        forumsCount[forumId] = forumsCount[forumId].filter((item) => item !== ip);
-        if (forumsCount[forumId].length === 0) {
-            delete forumsCount[forumId];
+        if (Array.isArray(forums[forumId])) {
+            forums[forumId] = forums[forumId].filter((item) => item !== ip);
+            if (forums[forumId].length === 0) {
+                delete forums[forumId];
+            }
         }
 
-        if (topicKey !== null) {
-            topicsCount[topicKey] = topicsCount[topicKey].filter((item) => item !== ip);
-            if (topicsCount[topicKey].length === 0) {
-                delete topicsCount[topicKey];
+        if (topicKey !== null && Array.isArray(topics[topicKey])) {
+            topics[topicKey] = topics[topicKey].filter((item) => item !== ip);
+            if (topics[topicKey].length === 0) {
+                delete topics[topicKey];
             }
         }
     });
