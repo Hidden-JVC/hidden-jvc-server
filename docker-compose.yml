@@ -5,9 +5,9 @@ services:
     container_name: hidden-database
     image: postgres:12
     environment:
-      POSTGRES_DB: HiddenJVC
-      POSTGRES_USER: hidden-jvc-user
-      POSTGRES_PASSWORD: aze
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - ./database.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
@@ -19,7 +19,7 @@ services:
     depends_on:
       - hidden-database
     environment:
-      PGADMIN_DEFAULT_EMAIL: hidden@jvc
-      PGADMIN_DEFAULT_PASSWORD: aze
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
     ports:
       - "8181:80"
