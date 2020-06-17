@@ -2,9 +2,7 @@ const cors = require('cors');
 const express = require('express');
 const bodyParser = require('body-parser');
 
-
 const routes = require('./routes');
-const database = require('./database.js');
 const { authenticate } = require('./middlewares');
 const { accessLogger, logger } = require('./helpers/logger.js');
 
