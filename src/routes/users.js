@@ -85,7 +85,11 @@ router.post('/login', async (req, res, next) => {
 
         const jwt = await createJWT(user.Id, user.Name, sessionId);
 
-        res.json({ jwt });
+        const returnUser = {
+            type: user.Type
+        };
+
+        res.json({ jwt, user: returnUser });
     } catch (err) {
         next(err);
     }

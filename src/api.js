@@ -41,6 +41,7 @@ app.use(function (req, res, next) {
 // error handler
 app.use(function (err, req, res, next) { // eslint-disable-line no-unused-vars
     logger.error(err.message);
+    logger.error(err.stack);
     res.status(500).json({
         error: err.message
     });

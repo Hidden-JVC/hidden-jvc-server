@@ -1,9 +1,10 @@
 const router = require('express').Router();
 
 const database = require('../../database.js');
+const { isModerator, authRequired } = require('../../middlewares');
 const { parsePagination, sqlLogger } = require('../../helpers');
 
-// /topics/hidden
+// /hidden/topics
 router.get('/', async (req, res, next) => {
     try {
         const { debug } = res.locals;
@@ -29,6 +30,7 @@ router.get('/', async (req, res, next) => {
         const [{ count }] = await database
             .select(database.raw('count(*)::integer'))
             .from('HiddenTopic')
+            .where('JVCForumId', '=', forumId)
             .on('query', sqlLogger(debug));
 
         res.json({ topics, count });
@@ -37,7 +39,60 @@ router.get('/', async (req, res, next) => {
     }
 });
 
-// /topics/hidden
+// /hidden/topics/moderation
+router.post('/moderation', authRequired, isModerator, async (req, res, next) => {
+    try {
+        const { action, topicIds, postIds } = req.body;
+
+        if (topicIds) {
+            switch (action) {
+                case 'pin':
+                    await database('HiddenTopic')
+                        .update({ Pinned: true })
+                        .whereIn('Id', topicIds);
+                    break;
+
+                case 'unpin':
+                    await database('HiddenTopic')
+                        .update({ Pinned: false })
+                        .whereIn('Id', topicIds);
+                    break;
+
+                case 'lock':
+                    await database('HiddenTopic')
+                        .update({ Locked: true })
+                        .whereIn('Id', topicIds);
+                    break;
+
+                case 'unlock':
+                    await database('HiddenTopic')
+                        .update({ Locked: false })
+                        .whereIn('Id', topicIds);
+                    break;
+
+                case 'delete':
+                    await database('HiddenTopic')
+                        .del()
+                        .whereIn('Id', topicIds);
+                    break;
+            }
+        } else if (postIds) {
+            switch (action) {
+                case 'delete':
+                    await database('HiddenPost')
+                        .del()
+                        .whereIn('Id', postIds);
+                    break;
+            }
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// /hidden/topics
 router.post('/', async (req, res, next) => {
     try {
         const { userId } = res.locals;
@@ -110,7 +165,7 @@ router.post('/', async (req, res, next) => {
     }
 });
 
-// /topics/hidden/:topicId
+// /hidden/topics/:topicId
 router.get('/:topicId', async (req, res, next) => {
     try {
         const { topicId } = req.params;
@@ -132,7 +187,7 @@ router.get('/:topicId', async (req, res, next) => {
     }
 });
 
-// /topics/hidden/:topicId
+// /hidden/topics/:topicId
 router.post('/:topicId', async (req, res, next) => {
     try {
         const { userId } = res.locals;
@@ -167,6 +222,10 @@ router.post('/:topicId', async (req, res, next) => {
 
         if (!topic) {
             throw new Error(`Le topic avec l'id: ${topicId} est introuvable`);
+        }
+
+        if (topic.Locked) {
+            throw new Error('Le topic est lock');
         }
 
         const [postId] = await database
