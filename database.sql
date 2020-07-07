@@ -205,7 +205,8 @@ $BODY$
                             THEN NULL
                             ELSE json_build_object(
                                 'Id', "PostUser"."Id",
-                                'Name', "PostUser"."Name"
+                                'Name', "PostUser"."Name",
+                                'Type', "PostUser"."Type"
                             ) END
                     )
                 ) END,
@@ -309,7 +310,8 @@ $BODY$
                     'User', CASE WHEN "PostUser"."Id" IS NULL THEN NULL
                         ELSE json_build_object(
                             'Id', "PostUser"."Id",
-                            'Name', "PostUser"."Name"
+                            'Name', "PostUser"."Name",
+                            'Type', "PostUser"."Type"
                         )
                         END
                 )

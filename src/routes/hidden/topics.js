@@ -42,38 +42,48 @@ router.get('/', async (req, res, next) => {
 // /hidden/topics/moderation
 router.post('/moderation', authRequired, isModerator, async (req, res, next) => {
     try {
-        const { action, topicIds } = req.body;
+        const { action, topicIds, postIds } = req.body;
 
-        switch (action) {
-            case 'pin':
-                await database('HiddenTopic')
-                    .update({ Pinned: true })
-                    .whereIn('Id', topicIds);
-                break;
+        if (topicIds) {
+            switch (action) {
+                case 'pin':
+                    await database('HiddenTopic')
+                        .update({ Pinned: true })
+                        .whereIn('Id', topicIds);
+                    break;
 
-            case 'unpin':
-                await database('HiddenTopic')
-                    .update({ Pinned: false })
-                    .whereIn('Id', topicIds);
-                break;
+                case 'unpin':
+                    await database('HiddenTopic')
+                        .update({ Pinned: false })
+                        .whereIn('Id', topicIds);
+                    break;
 
-            case 'lock':
-                await database('HiddenTopic')
-                    .update({ Locked: true })
-                    .whereIn('Id', topicIds);
-                break;
+                case 'lock':
+                    await database('HiddenTopic')
+                        .update({ Locked: true })
+                        .whereIn('Id', topicIds);
+                    break;
 
-            case 'unlock':
-                await database('HiddenTopic')
-                    .update({ Locked: false })
-                    .whereIn('Id', topicIds);
-                break;
+                case 'unlock':
+                    await database('HiddenTopic')
+                        .update({ Locked: false })
+                        .whereIn('Id', topicIds);
+                    break;
 
-            case 'delete':
-                await database('HiddenTopic')
-                    .del()
-                    .whereIn('Id', topicIds);
-                break;
+                case 'delete':
+                    await database('HiddenTopic')
+                        .del()
+                        .whereIn('Id', topicIds);
+                    break;
+            }
+        } else if (postIds) {
+            switch (action) {
+                case 'delete':
+                    await database('HiddenPost')
+                        .del()
+                        .whereIn('Id', postIds);
+                    break;
+            }
         }
 
         res.json({ success: true });
@@ -212,6 +222,10 @@ router.post('/:topicId', async (req, res, next) => {
 
         if (!topic) {
             throw new Error(`Le topic avec l'id: ${topicId} est introuvable`);
+        }
+
+        if (topic.Locked) {
+            throw new Error('Le topic est lock');
         }
 
         const [postId] = await database
