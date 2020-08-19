@@ -25,8 +25,7 @@ router.post('/register', async (req, res, next) => {
 
         const values = {
             Name: name,
-            Password: hash,
-            Type: 'User'
+            Password: hash
         };
 
         const [userId] = await database
@@ -54,7 +53,7 @@ router.post('/login', async (req, res, next) => {
         }
 
         const [user] = await database
-            .select('*')
+            .select(['Id', 'Name', 'Password', 'IsAdmin'])
             .from('User')
             .where('Name', '=', name);
 
@@ -68,16 +67,14 @@ router.post('/login', async (req, res, next) => {
             return next(new Error('invalid name or password'));
         }
 
-        const [session] = await database
+        const [moderator] = await database
             .select('*')
-            .from('Session')
+            .from('Moderator')
             .where('UserId', '=', user.Id);
 
-        if (session) {
-            await database('Session')
-                .where('UserId', '=', user.Id)
-                .del();
-        }
+        await database('Session')
+            .where('UserId', '=', user.Id)
+            .del();
 
         const [sessionId] = await database
             .insert({ UserId: user.Id }, 'Id')
@@ -85,11 +82,9 @@ router.post('/login', async (req, res, next) => {
 
         const jwt = await createJWT(user.Id, user.Name, sessionId);
 
-        const returnUser = {
-            type: user.Type
-        };
+        const isModerator = (typeof moderator === 'object') || user.IsAdmin;
 
-        res.json({ jwt, user: returnUser });
+        res.json({ jwt, isModerator });
     } catch (err) {
         next(err);
     }

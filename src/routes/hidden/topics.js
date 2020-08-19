@@ -1,7 +1,6 @@
 const router = require('express').Router();
 
 const database = require('../../database.js');
-const { isModerator, authRequired } = require('../../middlewares');
 const { parsePagination, sqlLogger } = require('../../helpers');
 
 // /hidden/topics
@@ -34,59 +33,6 @@ router.get('/', async (req, res, next) => {
             .on('query', sqlLogger(debug));
 
         res.json({ topics, count });
-    } catch (err) {
-        next(err);
-    }
-});
-
-// /hidden/topics/moderation
-router.post('/moderation', authRequired, isModerator, async (req, res, next) => {
-    try {
-        const { action, topicIds, postIds } = req.body;
-
-        if (topicIds) {
-            switch (action) {
-                case 'pin':
-                    await database('HiddenTopic')
-                        .update({ Pinned: true })
-                        .whereIn('Id', topicIds);
-                    break;
-
-                case 'unpin':
-                    await database('HiddenTopic')
-                        .update({ Pinned: false })
-                        .whereIn('Id', topicIds);
-                    break;
-
-                case 'lock':
-                    await database('HiddenTopic')
-                        .update({ Locked: true })
-                        .whereIn('Id', topicIds);
-                    break;
-
-                case 'unlock':
-                    await database('HiddenTopic')
-                        .update({ Locked: false })
-                        .whereIn('Id', topicIds);
-                    break;
-
-                case 'delete':
-                    await database('HiddenTopic')
-                        .del()
-                        .whereIn('Id', topicIds);
-                    break;
-            }
-        } else if (postIds) {
-            switch (action) {
-                case 'delete':
-                    await database('HiddenPost')
-                        .del()
-                        .whereIn('Id', postIds);
-                    break;
-            }
-        }
-
-        res.json({ success: true });
     } catch (err) {
         next(err);
     }
@@ -179,7 +125,7 @@ router.get('/:topicId', async (req, res, next) => {
 
         const [{ HiddenTopicPostsJson: topic }] = await database
             .select('*')
-            .from(database.raw('"HiddenTopicPostsJson"(?, ?, 20, ?)', [topicId, pagination.offset, userId]));
+            .from(database.raw('"HiddenTopicPostsJson"(?, ?, ?, ?)', [topicId, pagination.offset, 20, userId]));
 
         res.json({ topic });
     } catch (err) {

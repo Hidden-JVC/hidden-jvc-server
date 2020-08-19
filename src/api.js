@@ -8,13 +8,13 @@ const { accessLogger, logger } = require('./helpers/logger.js');
 
 const app = express();
 
+app.use(cors());
 app.use(bodyParser.json());
 
 app.use(authenticate);
-app.use(cors());
 
+// logs every requests
 app.use(function (req, res, next) {
-    // logs every requests
     let message = `${req.method} - ${req.originalUrl}`;
     const { userName } = res.locals;
     if (userName) {

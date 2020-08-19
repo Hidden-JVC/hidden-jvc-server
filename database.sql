@@ -1,13 +1,13 @@
 SET timezone = 'Europe/Paris';
 
-CREATE TYPE "UserType" AS ENUM ('User', 'Moderator', 'Admin');
-
 -- Hidden JVC registered account
 CREATE TABLE "User" (
     "Id" SERIAL,
-    "Name" VARCHAR(15) NOT NULL UNIQUE,
+    "Name" VARCHAR(15) NOT NULL UNIQUE CONSTRAINT "User_Name_Min_Length_Check" CHECK(char_length("Name") > 3),
     "Password" CHAR(60) NOT NULL,
-    "Type" "UserType" NOT NULL,
+    "IsAdmin" BOOLEAN NOT NULL DEFAULT FALSE,
+    "Email" VARCHAR(50) NULL,
+    "ProfilePicture" VARCHAR(200) NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
 
     PRIMARY KEY ("Id")
@@ -16,8 +16,9 @@ CREATE TABLE "User" (
 -- User session
 CREATE TABLE "Session" (
     "Id" SERIAL,
-
     "UserId" INTEGER NOT NULL UNIQUE,
+    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
+
     PRIMARY KEY ("Id"),
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE
 );
@@ -28,6 +29,35 @@ CREATE TABLE "JVCForum" (
     "Name" VARCHAR(200) NOT NULL,
 
     PRIMARY KEY ("Id")
+);
+
+CREATE TYPE "ModerationAction" AS ENUM (
+    'Pin', 'UnPin',
+    'Lock', 'UnLock',
+    'DeleteTopic',
+    'DeletePost',
+    'Kick', 'UnKick',
+    'Ban', 'UnBan'
+);
+
+CREATE TABLE "Moderator" (
+    "UserId" INT NOT NULL,
+    "ForumId" INT NOT NULL,
+    "Actions" "ModerationAction"[] NOT NULL,
+
+    PRIMARY KEY ("UserId", "ForumId"),
+    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE,
+    FOREIGN KEY ("ForumId") REFERENCES "JVCForum" ("Id") ON DELETE CASCADE
+);
+
+CREATE TABLE "ModerationLog" (
+    "Id" SERIAL,
+    "Action" "ModerationAction" NOT NULL,
+    "UserId" INT NOT NULL,
+    "Date" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
+
+    PRIMARY KEY ("Id"),
+    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE
 );
 
 -- Represents a real JVC topic
@@ -91,6 +121,7 @@ CREATE TABLE "HiddenTopicTag" (
     "TopicId" INTEGER NOT NULL,
     "TagId" INTEGER NOT NULL,
 
+    PRIMARY KEY ("TopicId", "TagId"),
     FOREIGN KEY ("TopicId") REFERENCES "HiddenTopic" ("Id"),
     FOREIGN KEY ("TagId") REFERENCES "HiddenTag" ("Id")
 );
@@ -100,9 +131,10 @@ CREATE TABLE "HiddenPost" (
     "Id" SERIAL,
     "Content" VARCHAR(8000) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
+    "Pinned" BOOLEAN NOT NULL DEFAULT FALSE,
 
-    "UserId" INTEGER NULL,
-    "Username" VARCHAR(20) NULL, -- only used when "UserId" is NULL
+    "UserId" INTEGER NULL,  -- logged in user
+    "Username" VARCHAR(15) NULL, -- anonymous user
 
     "HiddenTopicId" INTEGER NOT NULL,
 
@@ -156,9 +188,7 @@ LANGUAGE plpgsql;
 
 -- List of JVCTopic
 CREATE OR REPLACE FUNCTION "JVCTopicListJson" (
-	IN "_TopicIds" VARCHAR DEFAULT NULL, -- comma separated list of JVCTopic Id
-    IN "_Offset" INTEGER DEFAULT 0,
-    IN "_Limit" INTEGER DEFAULT 20
+	IN "_TopicIds" VARCHAR DEFAULT NULL -- comma separated list of JVCTopic Id
 ) RETURNS SETOF JSON AS
 $BODY$
     BEGIN
@@ -167,15 +197,7 @@ $BODY$
             'PostsCount', (SELECT COUNT(*) FROM "JVCPost" WHERE "JVCPost"."JVCTopicId" = "JVCTopic"."Id")
 		)
         FROM "JVCTopic"
-		CROSS JOIN LATERAL (
-			SELECT MAX("CreationDate") AS "CreationDate"
-			FROM "JVCPost"
-			WHERE "JVCPost"."JVCTopicId" = "JVCTopic"."Id"
-		) "LastJVCPost"
-		WHERE ("_TopicIds" IS NULL OR "JVCTopic"."Id" = ANY(string_to_array("_TopicIds", ',')::INT[]))
-        ORDER BY "LastJVCPost"."CreationDate" DESC
-        OFFSET "_Offset"
-        LIMIT "_Limit";
+		WHERE ("_TopicIds" IS NULL OR "JVCTopic"."Id" = ANY(string_to_array("_TopicIds", ',')::INT[]));
     END
 $BODY$
 LANGUAGE plpgsql;
@@ -206,7 +228,7 @@ $BODY$
                             ELSE json_build_object(
                                 'Id', "PostUser"."Id",
                                 'Name', "PostUser"."Name",
-                                'Type', "PostUser"."Type"
+					            'IsModerator', "PostModerator"."UserId" IS NOT NULL OR "PostUser"."IsAdmin"
                             ) END
                     )
                 ) END,
@@ -222,10 +244,16 @@ $BODY$
             ORDER BY "JVCPost"."CreationDate" ASC
         ) "JVCPost" ON TRUE
         LEFT JOIN LATERAL (
-            SELECT *
+            SELECT "Id", "Name", "IsAdmin"
             FROM "User"
             WHERE "User"."Id" = "JVCPost"."UserId"
         ) "PostUser" ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT "UserId"
+            FROM "Moderator"
+            WHERE "Moderator"."UserId" = "PostUser"."Id"
+            AND "Moderator"."ForumId" = "JVCTopic"."JVCForumId"
+        ) "PostModerator" ON TRUE
         WHERE "JVCTopic"."Id" = "_TopicId"
         GROUP BY "JVCTopic"."Id";
     END
@@ -249,7 +277,8 @@ $BODY$
 				THEN NULL
                 ELSE json_build_object(
 					'Id', "User"."Id",
-					'Name', "User"."Name"
+					'Name', "User"."Name",
+					'IsModerator', "Moderator"."UserId" IS NOT NULL OR "User"."IsAdmin"
 				)
 			END,
 			'Tags', (
@@ -267,6 +296,7 @@ $BODY$
 		)
         FROM "HiddenTopic"
         LEFT JOIN "User" ON "User"."Id" = "HiddenTopic"."UserId"
+        LEFT JOIN "Moderator" ON "Moderator"."UserId" = "HiddenTopic"."UserId" AND "Moderator"."ForumId" = "HiddenTopic"."JVCForumId"
 		CROSS JOIN LATERAL (
 			SELECT MAX("CreationDate") AS "CreationDate"
 			FROM "HiddenPost"
@@ -293,7 +323,7 @@ $BODY$
     BEGIN
         RETURN QUERY SELECT json_build_object(
             'Topic', "HiddenTopic".*,
-            'User', CASE WHEN "User"."Id" IS NULL THEN NULL
+            'Author', CASE WHEN "User"."Id" IS NULL THEN NULL
                 ELSE json_build_object(
                     'Id', "User"."Id",
                     'Name', "User"."Name"
@@ -311,7 +341,7 @@ $BODY$
                         ELSE json_build_object(
                             'Id', "PostUser"."Id",
                             'Name', "PostUser"."Name",
-                            'Type', "PostUser"."Type"
+                            'IsModerator', "PostModerator"."UserId" IS NOT NULL OR "PostUser"."IsAdmin"
                         )
                         END
                 )
@@ -319,7 +349,7 @@ $BODY$
             'PostsCount', MIN("HiddenPost"."Count")
         )
         FROM "HiddenTopic"
-        LEFT JOIN "User" ON "User"."Id" = "HiddenTopic"."UserId"
+        LEFT JOIN "User" ON "User"."Id" = "HiddenTopic"."UserId" -- remove this join ?
         LEFT JOIN LATERAL (
             SELECT *, COUNT(*) OVER() AS "Count"
             FROM "HiddenPost"
@@ -329,30 +359,19 @@ $BODY$
             LIMIT "_PostLimit"
         ) "HiddenPost" ON TRUE
         LEFT JOIN LATERAL (
-            SELECT *
+            SELECT "Id", "Name", "IsAdmin"
             FROM "User"
             WHERE "User"."Id" = "HiddenPost"."UserId"
         ) "PostUser" ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT "UserId"
+            FROM "Moderator"
+            WHERE "Moderator"."UserId" = "PostUser"."Id"
+            AND "Moderator"."ForumId" = "HiddenTopic"."JVCForumId"
+        ) "PostModerator" ON TRUE
         WHERE "HiddenTopic"."Id" = "_TopicId"
         AND ("_UserId" IS NULL OR ("HiddenPost"."UserId" = "_UserId"))
         GROUP BY "HiddenTopic"."Id", "User"."Id";
     END
 $BODY$
 LANGUAGE plpgsql;
-
--- DROP INDEX "HiddenPost_TopicId_Index";
--- DROP FUNCTION "JVCForumJson";
--- DROP FUNCTION "JVCTopicListJson";
--- DROP FUNCTION "JVCTopicPostsJson";
--- DROP FUNCTION "HiddenTopicListJson";
--- DROP FUNCTION "HiddenTopicPostsJson";
--- DROP TABLE "HiddenTopicTag";
--- DROP TABLE "HiddenTag";
--- DROP TABLE "HiddenPost";
--- DROP TABLE "HiddenTopic";
--- DROP TABLE "JVCPost";
--- DROP TABLE "JVCTopic";
--- DROP TABLE "JVCForum";
--- DROP TABLE "Session";
--- DROP TABLE "User";
--- DROP TYPE "UserType";
