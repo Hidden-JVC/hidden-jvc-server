@@ -15,7 +15,7 @@ services:
 
   hidden-pgadmin:
     container_name: hidden-pgadmin
-    image: dpage/pgadmin4:4.21
+    image: dpage/pgadmin4:4.24
     depends_on:
       - hidden-database
     environment:
