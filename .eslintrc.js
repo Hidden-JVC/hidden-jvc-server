@@ -16,7 +16,6 @@ module.exports = {
         'eol-last': 'warn',
         'no-multiple-empty-lines': ['warn', { 'max': 1 }],
         'indent': ['warn', 4, { "SwitchCase": 1 }],
-        'quotes': ['warn', 'single'],
-        'no-case-declarations': 'off'
+        'quotes': ['warn', 'single']
     }
 }

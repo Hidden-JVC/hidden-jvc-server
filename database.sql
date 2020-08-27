@@ -3,7 +3,7 @@ SET timezone = 'Europe/Paris';
 -- Hidden JVC registered account
 CREATE TABLE "User" (
     "Id" SERIAL,
-    "Name" VARCHAR(15) NOT NULL UNIQUE CONSTRAINT "User_Name_Min_Length_Check" CHECK(char_length("Name") > 3),
+    "Name" VARCHAR(15) NOT NULL UNIQUE CONSTRAINT "User_Name_Min_Length_Check" CHECK(char_length("Name") >= 3),
     "Password" CHAR(60) NOT NULL,
     "IsAdmin" BOOLEAN NOT NULL DEFAULT FALSE,
     "Email" VARCHAR(50) NULL,
@@ -55,6 +55,7 @@ CREATE TABLE "ModerationLog" (
     "Action" "ModerationAction" NOT NULL,
     "UserId" INT NOT NULL,
     "Date" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
+    "Info" VARCHAR(500) NOT NULL,
 
     PRIMARY KEY ("Id"),
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE
@@ -230,7 +231,7 @@ $BODY$
                                 'Name', "PostUser"."Name",
 					            'IsModerator', "PostModerator"."UserId" IS NOT NULL OR "PostUser"."IsAdmin"
                             ) END
-                    )
+                    ) ORDER BY "JVCPost"."CreationDate" ASC
                 ) END,
 			'Pages', (SELECT array_agg(DISTINCT "Page") FROM "JVCPost" WHERE "JVCPost"."JVCTopicId" = "JVCTopic"."Id")
         )
@@ -344,7 +345,7 @@ $BODY$
                             'IsModerator', "PostModerator"."UserId" IS NOT NULL OR "PostUser"."IsAdmin"
                         )
                         END
-                )
+                ) ORDER BY "HiddenPost"."CreationDate" ASC
             ),
             'PostsCount', MIN("HiddenPost"."Count")
         )
@@ -354,6 +355,7 @@ $BODY$
             SELECT *, COUNT(*) OVER() AS "Count"
             FROM "HiddenPost"
             WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
+            AND ("_UserId" IS NULL OR ("HiddenPost"."UserId" = "_UserId"))
             ORDER BY "HiddenPost"."CreationDate" ASC
             OFFSET "_PostOffset"
             LIMIT "_PostLimit"
@@ -370,7 +372,6 @@ $BODY$
             AND "Moderator"."ForumId" = "HiddenTopic"."JVCForumId"
         ) "PostModerator" ON TRUE
         WHERE "HiddenTopic"."Id" = "_TopicId"
-        AND ("_UserId" IS NULL OR ("HiddenPost"."UserId" = "_UserId"))
         GROUP BY "HiddenTopic"."Id", "User"."Id";
     END
 $BODY$
