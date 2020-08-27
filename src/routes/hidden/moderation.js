@@ -60,7 +60,7 @@ router.post('/topics', authRequired, isModerator, async (req, res, next) => {
 // /hidden/moderation/posts
 router.post('/posts', authRequired, isModerator, async (req, res, next) => {
     try {
-        const { isAdmin, actions } = res.locals;
+        const { userId, isAdmin, actions } = res.locals;
         const { action, ids } = req.body;
 
         if (!Array.isArray(ids)) {
@@ -92,6 +92,10 @@ router.post('/posts', authRequired, isModerator, async (req, res, next) => {
             default:
                 return next(new Error('unknown action'));
         }
+
+        // await database
+        //     .insert({ Action: action, UserId: userId })
+        //     .into('ModerationLog');
 
         res.json({ success: true });
     } catch (err) {
