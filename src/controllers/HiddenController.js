@@ -149,4 +149,205 @@ module.exports = class HiddenController {
 
         return postId;
     }
+
+    static async hasUserRightOnHiddenTopics(userId, action, topicIds) {
+        const [{ HasUserRightOnHiddenTopics }] = await database
+            .select('*')
+            .from(database.raw('"HasUserRightOnHiddenTopics"(?, ?, ?)', [userId, action, topicIds.join(',')]));
+        return HasUserRightOnHiddenTopics;
+    }
+
+    static async postModeration(action, ids, userId) {
+        switch (action) {
+            case 'DeletePost':
+                await this.deletePost(ids, action, userId);
+                break;
+            default:
+                throw new Error('unknown action');
+        }
+    }
+
+    static async topicModeration(action, ids, userId) {
+        if (!Array.isArray(ids)) {
+            throw new Error('ids must be an array');
+        }
+
+        const [user] = await database
+            .select('*')
+            .from('User')
+            .where('Id', '=', userId);
+
+        let allowed = user.IsAdmin;
+
+        if (!allowed) {
+            allowed = await this.hasUserRightOnHiddenTopics(userId, action, ids);
+        }
+
+        if (!allowed) {
+            throw new Error('not allowed');
+        }
+
+        switch (action) {
+            case 'Pin':
+                await this.pin(ids, action, userId);
+                break;
+
+            case 'UnPin':
+                await this.unpin(ids, action, userId);
+                break;
+
+            case 'Lock':
+                await this.lock(ids, action, userId);
+                break;
+
+            case 'UnLock':
+                await this.unlock(ids, action, userId);
+                break;
+
+            case 'DeleteTopic':
+                await this.deleteTopic(ids, action, userId);
+                break;
+
+            default:
+                throw new Error('unknown action');
+        }
+    }
+
+    static async pin(ids, action, userId) {
+        await database('HiddenTopic')
+            .update({ Pinned: true })
+            .whereIn('Id', ids);
+
+        const topics = await database
+            .select('*')
+            .from('HiddenTopic')
+            .whereIn('Id', ids);
+
+        const data = [];
+        for (const topic of topics) {
+            data.push({
+                Action: action,
+                UserId: userId,
+                Label: `Le topic "${topic.Title}" (#${topic.Id}) a été épinglé`
+            });
+        }
+        await database
+            .insert(data)
+            .into('ModerationLog');
+    }
+
+    static async unpin(ids, action, userId) {
+        await database('HiddenTopic')
+            .update({ Pinned: false })
+            .whereIn('Id', ids);
+
+        const topics = await database
+            .select('*')
+            .from('HiddenTopic')
+            .whereIn('Id', ids);
+
+        const data = [];
+        for (const topic of topics) {
+            data.push({
+                Action: action,
+                UserId: userId,
+                Label: `Le topic "${topic.Title}" (#${topic.Id}) a été désépinglé`
+            });
+        }
+        await database
+            .insert(data)
+            .into('ModerationLog');
+    }
+
+    static async lock(ids, action, userId) {
+        await database('HiddenTopic')
+            .update({ Locked: true })
+            .whereIn('Id', ids);
+
+        const topics = await database
+            .select('*')
+            .from('HiddenTopic')
+            .whereIn('Id', ids);
+
+        const data = [];
+        for (const topic of topics) {
+            data.push({
+                Action: action,
+                UserId: userId,
+                Label: `Le topic "${topic.Title}" (#${topic.Id}) a été lock`
+            });
+        }
+        await database
+            .insert(data)
+            .into('ModerationLog');
+    }
+
+    static async unlock(ids, action, userId) {
+        await database('HiddenTopic')
+            .update({ Locked: false })
+            .whereIn('Id', ids);
+
+        const topics = await database
+            .select('*')
+            .from('HiddenTopic')
+            .whereIn('Id', ids);
+
+        const data = [];
+        for (const topic of topics) {
+            data.push({
+                Action: action,
+                UserId: userId,
+                Label: `Le topic "${topic.Title}" (#${topic.Id}) a été délock`
+            });
+        }
+        await database
+            .insert(data)
+            .into('ModerationLog');
+    }
+
+    static async deleteTopic(ids, action, userId) {
+        const topics = await database
+            .select('*')
+            .from('HiddenTopic')
+            .whereIn('Id', ids);
+
+        const data = [];
+        for (const topic of topics) {
+            data.push({
+                Action: action,
+                UserId: userId,
+                Label: `Le topic "${topic.Title}" (#${topic.Id}) a été supprimé`
+            });
+        }
+        await database
+            .insert(data)
+            .into('ModerationLog');
+
+        await database('HiddenTopic')
+            .del()
+            .whereIn('Id', ids);
+    }
+
+    static async deletePost(ids, action, userId) {
+        const posts = await database
+            .select('*')
+            .from('HiddenPost')
+            .whereIn('Id', ids);
+
+        const data = [];
+        for (const post of posts) {
+            data.push({
+                Action: action,
+                UserId: userId,
+                Label: `Le post hidden (#${post.Id}) a été supprimé`
+            });
+        }
+        await database
+            .insert(data)
+            .into('ModerationLog');
+
+        await database('HiddenPost')
+            .del()
+            .whereIn('Id', ids);
+    }
 };

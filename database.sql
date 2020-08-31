@@ -41,8 +41,8 @@ CREATE TYPE "ModerationAction" AS ENUM (
 );
 
 CREATE TABLE "Moderator" (
-    "UserId" INT NOT NULL,
-    "ForumId" INT NOT NULL,
+    "UserId" INTEGER NOT NULL,
+    "ForumId" INTEGER NOT NULL,
     "Actions" "ModerationAction"[] NOT NULL,
 
     PRIMARY KEY ("UserId", "ForumId"),
@@ -53,9 +53,9 @@ CREATE TABLE "Moderator" (
 CREATE TABLE "ModerationLog" (
     "Id" SERIAL,
     "Action" "ModerationAction" NOT NULL,
-    "UserId" INT NOT NULL,
+    "UserId" INTEGER NOT NULL,
     "Date" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
-    "Info" VARCHAR(500) NOT NULL,
+    "Label" VARCHAR(500) NOT NULL,
 
     PRIMARY KEY ("Id"),
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE
@@ -146,6 +146,78 @@ CREATE TABLE "HiddenPost" (
 
 CREATE INDEX "HiddenPost_TopicId_Index" ON "HiddenPost" ("HiddenTopicId");
 
+CREATE OR REPLACE FUNCTION "HasUserRightOnHiddenTopics" (
+    IN "_UserId" INTEGER,
+    IN "_Action" "ModerationAction",
+    IN "_TopicIds" VARCHAR DEFAULT NULL -- comma separated list of HiddenTopic Id
+) RETURNS BOOLEAN AS
+$BODY$
+    DECLARE "_ForumIds" INTEGER[];
+    DECLARE "_ForumCount" INTEGER;
+    DECLARE "_ModeratorCount" INTEGER;
+
+    BEGIN
+        "_ForumIds" := ARRAY(
+            SELECT DISTINCT "JVCForumId"
+            FROM "HiddenTopic"
+            WHERE "Id" = ANY(string_to_array("_TopicIds", ',')::INTEGER[])
+        );
+
+        "_ForumCount" := COALESCE(array_length("_ForumIds", 1), 0);
+
+        IF "_ForumCount" = 0 THEN
+            RETURN FALSE;
+        END IF;
+
+        "_ModeratorCount" := (
+            SELECT COUNT(*)
+            FROM "Moderator"
+            WHERE "UserId" = "_UserId"
+            AND "_Action" = ANY("Actions")
+            AND "ForumId" = ANY("_ForumIds")
+        );
+
+        RETURN "_ModeratorCount" = "_ForumCount";
+    END
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION "HasUserRightOnJVCTopics" (
+    IN "_UserId" INTEGER,
+    IN "_Action" "ModerationAction",
+    IN "_TopicIds" VARCHAR DEFAULT NULL -- comma separated list of JVCTopic Id
+) RETURNS BOOLEAN AS
+$BODY$
+    DECLARE "_ForumIds" INTEGER[];
+    DECLARE "_ForumCount" INTEGER;
+    DECLARE "_ModeratorCount" INTEGER;
+
+    BEGIN
+        "_ForumIds" := ARRAY(
+            SELECT DISTINCT "JVCForumId"
+            FROM "JVCTopic"
+            WHERE "Id" = ANY(string_to_array("_TopicIds", ',')::INTEGER[])
+        );
+
+        "_ForumCount" := COALESCE(array_length("_ForumIds", 1), 0);
+
+        IF "_ForumCount" = 0 THEN
+            RETURN FALSE;
+        END IF;
+
+        "_ModeratorCount" := (
+            SELECT COUNT(*)
+            FROM "Moderator"
+            WHERE "UserId" = "_UserId"
+            AND "_Action" = ANY("Actions")
+            AND "ForumId" = ANY("_ForumIds")
+        );
+
+        RETURN "_ModeratorCount" = "_ForumCount";
+    END
+$BODY$
+LANGUAGE plpgsql;
+
 -- List of forums
 CREATE OR REPLACE FUNCTION "JVCForumJson" (
     IN "_Offset" INTEGER DEFAULT 0,
@@ -196,9 +268,9 @@ $BODY$
         RETURN QUERY SELECT json_build_object(
             'Topic', "JVCTopic".*,
             'PostsCount', (SELECT COUNT(*) FROM "JVCPost" WHERE "JVCPost"."JVCTopicId" = "JVCTopic"."Id")
-		)
+        )
         FROM "JVCTopic"
-		WHERE ("_TopicIds" IS NULL OR "JVCTopic"."Id" = ANY(string_to_array("_TopicIds", ',')::INT[]));
+        WHERE ("_TopicIds" IS NULL OR "JVCTopic"."Id" = ANY(string_to_array("_TopicIds", ',')::INTEGER[]));
     END
 $BODY$
 LANGUAGE plpgsql;
@@ -274,12 +346,12 @@ $BODY$
         RETURN QUERY SELECT json_build_object(
             'Topic', "HiddenTopic".*,
             'LastPostDate', "LastHiddenPost"."CreationDate",
-            'Author', CASE WHEN "User"."Id" IS NULL
+            'Author', CASE WHEN "TopicAuthor"."Id" IS NULL
 				THEN NULL
                 ELSE json_build_object(
-					'Id', "User"."Id",
-					'Name', "User"."Name",
-					'IsModerator', "Moderator"."UserId" IS NOT NULL OR "User"."IsAdmin"
+					'Id', "TopicAuthor"."Id",
+					'Name', "TopicAuthor"."Name",
+					'IsModerator', "AuthorModerator"."UserId" IS NOT NULL OR "TopicAuthor"."IsAdmin"
 				)
 			END,
 			'Tags', (
@@ -293,11 +365,14 @@ $BODY$
                 SELECT COUNT(*)
                 FROM "HiddenPost"
                 WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
-            ) - 1
+            ) - 1,
+            'Moderators', array_agg("ForumModerator")
 		)
         FROM "HiddenTopic"
-        LEFT JOIN "User" ON "User"."Id" = "HiddenTopic"."UserId"
-        LEFT JOIN "Moderator" ON "Moderator"."UserId" = "HiddenTopic"."UserId" AND "Moderator"."ForumId" = "HiddenTopic"."JVCForumId"
+        LEFT JOIN "User" AS "TopicAuthor"
+            ON "TopicAuthor"."Id" = "HiddenTopic"."UserId"
+        LEFT JOIN "Moderator" AS "AuthorModerator"
+            ON "AuthorModerator"."UserId" = "HiddenTopic"."UserId" AND "AuthorModerator"."ForumId" = "HiddenTopic"."JVCForumId"
 		CROSS JOIN LATERAL (
 			SELECT MAX("CreationDate") AS "CreationDate"
 			FROM "HiddenPost"

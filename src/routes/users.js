@@ -67,11 +67,6 @@ router.post('/login', async (req, res, next) => {
             return next(new Error('invalid name or password'));
         }
 
-        const [moderator] = await database
-            .select('*')
-            .from('Moderator')
-            .where('UserId', '=', user.Id);
-
         await database('Session')
             .where('UserId', '=', user.Id)
             .del();
@@ -80,11 +75,14 @@ router.post('/login', async (req, res, next) => {
             .insert({ UserId: user.Id }, 'Id')
             .into('Session');
 
+        const moderators = await database
+            .select(['ForumId', database.raw('array_to_json("Actions") AS "Actions"')])
+            .from('Moderator')
+            .where('UserId', '=', user.Id);
+
         const jwt = await createJWT(user.Id, user.Name, sessionId);
 
-        const isModerator = (typeof moderator === 'object') || user.IsAdmin;
-
-        res.json({ jwt, isModerator });
+        res.json({ jwt, isAdmin: user.IsAdmin, moderators });
     } catch (err) {
         next(err);
     }
