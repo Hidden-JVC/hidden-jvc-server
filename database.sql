@@ -365,8 +365,7 @@ $BODY$
                 SELECT COUNT(*)
                 FROM "HiddenPost"
                 WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
-            ) - 1,
-            'Moderators', array_agg("ForumModerator")
+            ) - 1
 		)
         FROM "HiddenTopic"
         LEFT JOIN "User" AS "TopicAuthor"

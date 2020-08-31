@@ -19,8 +19,8 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
     try {
         const { userId } = res.locals;
-        const { title, content, forumId } = req.body;
-        const data = { title, content, forumId, userId };
+        const { title, content, username, forumId } = req.body;
+        const data = { title, content, username, forumId, userId };
 
         const { topicId } = await HiddenController.createTopic(data);
         res.json({ topicId });
@@ -48,8 +48,8 @@ router.post('/:topicId', async (req, res, next) => {
     try {
         const { userId } = res.locals;
         const { topicId } = req.params;
-        const { content } = req.body;
-        const data = { userId, topicId, content };
+        const { content, username } = req.body;
+        const data = { userId, topicId, content, username };
 
         const { postId } = await HiddenController.createPost(data);
         res.json({ postId });
