@@ -75,9 +75,14 @@ router.post('/login', async (req, res, next) => {
             .insert({ UserId: user.Id }, 'Id')
             .into('Session');
 
+        const moderators = await database
+            .select(['ForumId', database.raw('array_to_json("Actions") AS "Actions"')])
+            .from('Moderator')
+            .where('UserId', '=', user.Id);
+
         const jwt = await createJWT(user.Id, user.Name, sessionId);
 
-        res.json({ jwt, isAdmin: user.IsAdmin });
+        res.json({ jwt, isAdmin: user.IsAdmin, moderators });
     } catch (err) {
         next(err);
     }

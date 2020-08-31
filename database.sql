@@ -346,12 +346,12 @@ $BODY$
         RETURN QUERY SELECT json_build_object(
             'Topic', "HiddenTopic".*,
             'LastPostDate', "LastHiddenPost"."CreationDate",
-            'Author', CASE WHEN "User"."Id" IS NULL
+            'Author', CASE WHEN "TopicAuthor"."Id" IS NULL
 				THEN NULL
                 ELSE json_build_object(
-					'Id', "User"."Id",
-					'Name', "User"."Name",
-					'IsModerator', "Moderator"."UserId" IS NOT NULL OR "User"."IsAdmin"
+					'Id', "TopicAuthor"."Id",
+					'Name', "TopicAuthor"."Name",
+					'IsModerator', "AuthorModerator"."UserId" IS NOT NULL OR "TopicAuthor"."IsAdmin"
 				)
 			END,
 			'Tags', (
@@ -365,11 +365,14 @@ $BODY$
                 SELECT COUNT(*)
                 FROM "HiddenPost"
                 WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
-            ) - 1
+            ) - 1,
+            'Moderators', array_agg("ForumModerator")
 		)
         FROM "HiddenTopic"
-        LEFT JOIN "User" ON "User"."Id" = "HiddenTopic"."UserId"
-        LEFT JOIN "Moderator" ON "Moderator"."UserId" = "HiddenTopic"."UserId" AND "Moderator"."ForumId" = "HiddenTopic"."JVCForumId"
+        LEFT JOIN "User" AS "TopicAuthor"
+            ON "TopicAuthor"."Id" = "HiddenTopic"."UserId"
+        LEFT JOIN "Moderator" AS "AuthorModerator"
+            ON "AuthorModerator"."UserId" = "HiddenTopic"."UserId" AND "AuthorModerator"."ForumId" = "HiddenTopic"."JVCForumId"
 		CROSS JOIN LATERAL (
 			SELECT MAX("CreationDate") AS "CreationDate"
 			FROM "HiddenPost"
