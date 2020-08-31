@@ -97,4 +97,38 @@ module.exports = class JVCController {
 
         return topic;
     }
+
+    static async postModeration(action, ids, userId) {
+        switch (action) {
+            case 'DeletePost':
+                await this.deletePost(ids, action, userId);
+                break;
+            default:
+                throw new Error('unknown action');
+        }
+    }
+
+    static async deletePost(ids, action, userId) {
+        const posts = await database
+            .select('*')
+            .from('JVCPost')
+            .whereIn('Id', ids);
+
+        const data = [];
+        for (const post of posts) {
+            data.push({
+                Action: action,
+                UserId: userId,
+                Label: `Le post jvc (#${post.Id}) a été supprimé`
+            });
+        }
+
+        await database
+            .insert(data)
+            .into('ModerationLog');
+
+        await database('JVCPost')
+            .del()
+            .whereIn('Id', ids);
+    }
 };
