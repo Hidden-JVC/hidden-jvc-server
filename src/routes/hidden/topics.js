@@ -58,4 +58,19 @@ router.post('/:topicId', async (req, res, next) => {
     }
 });
 
+// /hidden/topics/:topicId/:postId
+router.post('/:topicId/:postId', async (req, res, next) => {
+    try {
+        const { userId } = res.locals;
+        const { postId } = req.params;
+        const { content } = req.body;
+        const data = { userId, postId: parseInt(postId), content };
+        await HiddenController.updatePost(data);
+
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
+
 module.exports = router;

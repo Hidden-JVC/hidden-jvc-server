@@ -81,6 +81,7 @@ CREATE TABLE "JVCPost" (
     "Id" SERIAL,
     "Content" VARCHAR(8000) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
+    "ModificationDate" TIMESTAMP NULL,
     "Page" INTEGER NOT NULL, -- the page on which the post was created, might not be accurate if some actual jvc posts are removed
 
     "UserId" INTEGER NULL, -- logged in user
@@ -132,6 +133,7 @@ CREATE TABLE "HiddenPost" (
     "Id" SERIAL,
     "Content" VARCHAR(8000) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
+    "ModificationDate" TIMESTAMP NULL,
     "Pinned" BOOLEAN NOT NULL DEFAULT FALSE,
 
     "UserId" INTEGER NULL,  -- logged in user
@@ -293,6 +295,7 @@ $BODY$
                             'Id', "JVCPost"."Id",
                             'Content', "JVCPost"."Content",
                             'CreationDate', "JVCPost"."CreationDate",
+                            'ModificationDate', "JVCPost"."ModificationDate",
                             'Username', "JVCPost"."Username",
                             'Page', "JVCPost"."Page"
                         ),
@@ -410,6 +413,7 @@ $BODY$
                             'Id', "HiddenPost"."Id",
                             'Content', "HiddenPost"."Content",
                             'CreationDate', "HiddenPost"."CreationDate",
+                            'ModificationDate', "HiddenPost"."ModificationDate",
                             'Username', "HiddenPost"."Username"
                         ),
                     'User', CASE WHEN "PostUser"."Id" IS NULL THEN NULL

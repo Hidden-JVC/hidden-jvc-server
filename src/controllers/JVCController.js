@@ -131,4 +131,27 @@ module.exports = class JVCController {
             .del()
             .whereIn('Id', ids);
     }
+
+    static async updatePost(data) {
+        if (typeof data.postId !== 'number') {
+            throw new Error('postId est requis');
+        }
+
+        const [post] = await database
+            .select('*')
+            .from('JVCPost')
+            .where('Id', '=', data.postId);
+
+        if (!post) {
+            throw new Error('post not found');
+        }
+
+        if (post.UserId === null || post.UserId !== data.userId) {
+            throw new Error('you can\'t update this post');
+        }
+
+        await database('JVCPost')
+            .update({ Content: data.content, ModificationDate: new Date() })
+            .where('Id', '=', data.postId);
+    }
 };
