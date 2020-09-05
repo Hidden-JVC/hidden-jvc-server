@@ -46,4 +46,19 @@ router.get('/:topicId', async (req, res, next) => {
     }
 });
 
+// /jvc/topics/:topicId/:postId
+router.post('/:topicId/:postId', async (req, res, next) => {
+    try {
+        const { userId } = res.locals;
+        const { postId } = req.params;
+        const { content } = req.body;
+        const data = { userId, postId: parseInt(postId), content };
+        await JVCController.updatePost(data);
+
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
+
 module.exports = router;
