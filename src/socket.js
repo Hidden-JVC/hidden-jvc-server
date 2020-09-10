@@ -71,4 +71,4 @@ io.on('connection', (socket) => {
 const port = process.env.SOCKET_PORT;
 server.listen(port, () => console.log(`socket listening on port: ${port}`));
 
-module.exports = server;
+module.exports = { io, server };

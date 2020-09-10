@@ -5,8 +5,8 @@ const HiddenController = require('../../controllers/HiddenController.js');
 // /hidden/topics
 router.get('/', async (req, res, next) => {
     try {
-        let { forumId, page, startDate, endDate } = req.query;
-        const data = { page, forumId, startDate, endDate };
+        let { forumId, page, startDate, endDate, pinned } = req.query;
+        const data = { page, forumId, startDate, endDate, pinned };
 
         const { topics, count } = await HiddenController.getTopics(data);
         res.json({ topics, count });

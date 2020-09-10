@@ -339,6 +339,7 @@ LANGUAGE plpgsql;
 -- List of HiddenTopic
 CREATE OR REPLACE FUNCTION "HiddenTopicListJson" (
     IN "_ForumId" INTEGER,
+    IN "_Pinned" BOOLEAN DEFAULT NULL,
     IN "_Offset" INTEGER DEFAULT 0,
     IN "_Limit" INTEGER DEFAULT 20,
     IN "_startDate" TIMESTAMP DEFAULT NULL,
@@ -383,6 +384,7 @@ $BODY$
         WHERE "HiddenTopic"."JVCForumId" = "_ForumId"
         AND ("_startDate" IS NULL OR "LastHiddenPost"."CreationDate" <= "_startDate")
         AND ("_endDate" IS NULL OR "LastHiddenPost"."CreationDate" >= "_endDate")
+        AND ("_Pinned" IS NULL OR "HiddenTopic"."Pinned" = "_Pinned")
         ORDER BY "HiddenTopic"."Pinned" DESC, "LastHiddenPost"."CreationDate" DESC
         OFFSET "_Offset"
         LIMIT "_Limit";
