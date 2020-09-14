@@ -79,7 +79,7 @@ CREATE TABLE "JVCTopic" (
 -- Represents an Hidden JVC post on a real JVC topic
 CREATE TABLE "JVCPost" (
     "Id" SERIAL,
-    "Content" VARCHAR(8000) NOT NULL,
+    "Content" VARCHAR(16000) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
     "ModificationDate" TIMESTAMP NULL,
     "Page" INTEGER NOT NULL, -- the page on which the post was created, might not be accurate if some actual jvc posts are removed
@@ -131,9 +131,10 @@ CREATE TABLE "HiddenTopicTag" (
 -- Represents an indepandant Hidden JVC post
 CREATE TABLE "HiddenPost" (
     "Id" SERIAL,
-    "Content" VARCHAR(8000) NOT NULL,
+    "Content" VARCHAR(16000) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
     "ModificationDate" TIMESTAMP NULL,
+    "Op" BOOLEAN NOT NULL DEFAULT FALSE,
     "Pinned" BOOLEAN NOT NULL DEFAULT FALSE,
 
     "UserId" INTEGER NULL,  -- logged in user
@@ -144,6 +145,39 @@ CREATE TABLE "HiddenPost" (
     PRIMARY KEY ("Id"),
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE SET NULL,
     FOREIGN KEY ("HiddenTopicId") REFERENCES "HiddenTopic" ("Id") ON DELETE CASCADE
+);
+
+CREATE TABLE "Survey" (
+    "Id" SERIAL,
+    "Question" VARCHAR(300) NOT NULL,
+    "IsOpen" BOOLEAN DEFAULT TRUE,
+
+    "HiddenTopicId" INTEGER NOT NULL,
+
+    PRIMARY KEY ("Id"),
+    FOREIGN KEY ("HiddenTopicId") REFERENCES "HiddenTopic" ("Id") ON DELETE CASCADE
+);
+
+CREATE TABLE "SurveyOption" (
+    "Id" SERIAL,
+    "Label" VARCHAR(300) NOT NULL,
+
+    "SurveyId" INTEGER NOT NULL,
+
+    PRIMARY KEY ("Id"),
+    FOREIGN KEY ("SurveyId") REFERENCES "Survey" ("Id") ON DELETE CASCADE
+);
+
+CREATE TABLE "SurveyAnswer" (
+    "SurveyId" INTEGER NOT NULL,
+    
+    "UserId" INTEGER NOT NULL,
+    "SurveyOptionId" INTEGER NOT NULL,
+
+    PRIMARY KEY ("SurveyId", "UserId", "SurveyOptionId"),
+    FOREIGN KEY ("SurveyId") REFERENCES "Survey" ("Id") ON DELETE CASCADE
+    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE
+    FOREIGN KEY ("SurveyOptionId") REFERENCES "SurveyOption" ("Id") ON DELETE CASCADE
 );
 
 CREATE INDEX "HiddenPost_TopicId_Index" ON "HiddenPost" ("HiddenTopicId");
@@ -397,7 +431,7 @@ CREATE OR REPLACE FUNCTION "HiddenTopicPostsJson" (
     IN "_TopicId" INTEGER,
     IN "_PostOffset" INTEGER DEFAULT 0,
     IN "_PostLimit" INTEGER DEFAULT 20,
-    IN "_UserId" INTEGER DEFAULT NULL -- Used to only get post from a certain user
+    IN "_UserId" INTEGER DEFAULT NULL -- Used to only get post from a single user
 ) RETURNS SETOF JSON AS
 $BODY$
     BEGIN
@@ -416,6 +450,8 @@ $BODY$
                             'Content', "HiddenPost"."Content",
                             'CreationDate', "HiddenPost"."CreationDate",
                             'ModificationDate', "HiddenPost"."ModificationDate",
+                            'Op', "HiddenPost"."Op",
+                            'Pinned', "HiddenPost"."Pinned",
                             'Username', "HiddenPost"."Username"
                         ),
                     'User', CASE WHEN "PostUser"."Id" IS NULL THEN NULL
@@ -425,7 +461,7 @@ $BODY$
                             'IsModerator', "PostModerator"."UserId" IS NOT NULL OR "PostUser"."IsAdmin"
                         )
                         END
-                ) ORDER BY "HiddenPost"."CreationDate" ASC
+                ) ORDER BY "HiddenPost"."Op" DESC, "HiddenPost"."Pinned" DESC, "HiddenPost"."CreationDate" ASC
             ),
             'PostsCount', MIN("HiddenPost"."Count")
         )
@@ -436,7 +472,7 @@ $BODY$
             FROM "HiddenPost"
             WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
             AND ("_UserId" IS NULL OR ("HiddenPost"."UserId" = "_UserId"))
-            ORDER BY "HiddenPost"."CreationDate" ASC
+            ORDER BY "HiddenPost"."Op" DESC, "HiddenPost"."Pinned" DESC, "HiddenPost"."CreationDate" ASC
             OFFSET "_PostOffset"
             LIMIT "_PostLimit"
         ) "HiddenPost" ON TRUE

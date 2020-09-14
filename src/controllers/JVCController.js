@@ -154,4 +154,60 @@ module.exports = class JVCController {
             .update({ Content: data.content, ModificationDate: new Date() })
             .where('Id', '=', data.postId);
     }
+
+    static async convertTopicToHidden(data) {
+        if (typeof data.jvcTopicId !== 'number') {
+            throw new Error('jvcTopicId est requis');
+        }
+
+        const [jvcTopic] = await database
+            .select('*')
+            .from('JVCTopic')
+            .where('Id', '=', data.jvcTopicId);
+
+        if (!jvcTopic) {
+            throw new Error('topic introuvable');
+        }
+
+        const jvcPosts = await database
+            .select('*')
+            .from('JVCPost')
+            .where('JVCTopicId', '=', data.jvcTopicId);
+
+        const topicData = {
+            Title: jvcTopic.Title,
+            CreationDate: jvcTopic.CreationDate,
+            JVCTopicId: jvcTopic.JVCTopicId,
+            JVCBackup: jvcTopic.JVCBackup,
+            Username: jvcTopic.FirstPostUsername
+        };
+
+        const [hiddenTopicId] = await database
+            .insert(topicData, 'Id')
+            .into('HiddenTopic');
+
+        const firstPostData = {
+            Content: jvcTopic.FirstPostUsername,
+            Op: true,
+            CreationDate: jvcTopic.CreationDate,
+            Username: jvcTopic.FirstPostUsername,
+            HiddenTopicId: hiddenTopicId
+        };
+
+        const postsData = [firstPostData];
+
+        for (const jvcPost of jvcPosts) {
+            postsData.push({
+                Content: jvcPost.Content,
+                CreationDate: jvcPost.CreationDate,
+                ModificationDate: jvcPost.ModificationDate,
+                Username: jvcTopic.Username,
+                HiddenTopicId: hiddenTopicId
+            });
+        }
+
+        await database
+            .insert(postsData)
+            .into('HiddenPost');
+    }
 };
