@@ -3,6 +3,7 @@
     "version": "0.1.0",
     "scripts": {
         "start": "pm2 start src/index.js --name hidden-jvc-server",
+        "restart": "pm2 restart hidden-jvc-server",
         "stop": "pm2 stop hidden-jvc-server"
     },
     "dependencies": {

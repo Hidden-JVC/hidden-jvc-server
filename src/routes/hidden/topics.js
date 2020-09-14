@@ -5,8 +5,8 @@ const HiddenController = require('../../controllers/HiddenController.js');
 // /hidden/topics
 router.get('/', async (req, res, next) => {
     try {
-        let { forumId, page, startDate, endDate } = req.query;
-        const data = { page, forumId, startDate, endDate };
+        let { forumId, page, startDate, endDate, pinned } = req.query;
+        const data = { page, forumId, startDate, endDate, pinned };
 
         const { topics, count } = await HiddenController.getTopics(data);
         res.json({ topics, count });
@@ -63,9 +63,15 @@ router.post('/:topicId/:postId', async (req, res, next) => {
     try {
         const { userId } = res.locals;
         const { postId } = req.params;
-        const { content } = req.body;
-        const data = { userId, postId: parseInt(postId), content };
-        await HiddenController.updatePost(data);
+        const { content, pinned } = req.body;
+        const data = { userId, postId: parseInt(postId), content, pinned };
+        if (typeof content === 'string') {
+            await HiddenController.updatePostContent(data);
+        } else if (typeof pinned === 'boolean') {
+            await HiddenController.updatePostPinned(data);
+        } else {
+            return res.json({ success: false });
+        }
 
         res.json({ success: true });
     } catch (err) {

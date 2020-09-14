@@ -14,9 +14,16 @@ module.exports = class HiddenController {
             data.endDate = null;
         }
 
+        let pinned = null;
+        if (data.pinned === '1') {
+            pinned = true;
+        } else if (data.pinned === '0') {
+            pinned = false;
+        }
+
         const result = await database
             .select('*')
-            .from(database.raw('"HiddenTopicListJson"(?, ?, ?, ?, ?)', [data.forumId, pagination.offset, 20, data.startDate, data.endDate]));
+            .from(database.raw('"HiddenTopicListJson"(?, ?, ?, ?, ?, ?)', [data.forumId, pinned, pagination.offset, 20, data.startDate, data.endDate]));
 
         const topics = result.map((row) => row.HiddenTopicListJson);
 
@@ -65,7 +72,8 @@ module.exports = class HiddenController {
         };
 
         const postData = {
-            Content: data.content
+            Content: data.content,
+            Op: true
         };
 
         if (data.userId) {
@@ -151,6 +159,42 @@ module.exports = class HiddenController {
             .select('*')
             .from(database.raw('"HasUserRightOnHiddenTopics"(?, ?, ?)', [userId, action, topicIds.join(',')]));
         return HasUserRightOnHiddenTopics;
+    }
+
+    static async updatePostPinned(data) {
+        if (typeof data.postId !== 'number') {
+            throw new Error('data.postId doit être un nombre');
+        }
+
+        if (typeof data.pinned !== 'boolean') {
+            throw new Error('data.pinned doit être un boolean');
+        }
+
+        const [post] = await database
+            .select('*')
+            .from('HiddenPost')
+            .where('Id', '=', data.postId);
+
+        if (!post) {
+            throw new Error('Le post n\'existe pas');
+        }
+
+        const [topic] = await database
+            .select('*')
+            .from('HiddenTopic')
+            .where('Id', '=', post.HiddenTopicId);
+
+        if (!topic) {
+            throw new Error('Le topic n\'existe pas');
+        }
+
+        if (data.userId !== topic.UserId) {
+            throw new Error('Vous n\'êtes pas l\'auteur du topic');
+        }
+
+        await database('HiddenPost')
+            .update({ Pinned: data.pinned })
+            .where('Id', '=', data.postId);
     }
 
     static async postModeration(action, ids, userId) {
@@ -347,7 +391,7 @@ module.exports = class HiddenController {
             .whereIn('Id', ids);
     }
 
-    static async updatePost(data) {
+    static async updatePostContent(data) {
         if (typeof data.postId !== 'number') {
             throw new Error('postId est requis');
         }
