@@ -1,8 +1,24 @@
 const database = require('../database.js');
 const ForumController = require('./ForumController.js');
-const { getTopicInfo } = require('../helpers');
 
 module.exports = class JVCController {
+    static async getForum(data) {
+        if (typeof data.forumId !== 'number') {
+            throw new Error('forumId est doit être un nombre');
+        }
+
+        const forums = await database
+            .select('*')
+            .from('JVCForum')
+            .where('Id', '=', data.forumId);
+
+        if (forums.length === 0) {
+            throw new Error('Ce forum n\'existe pas');
+        }
+
+        return forums[0];
+    }
+
     static async getTopics(data) {
         if (typeof data.topicIds !== 'string') {
             throw new Error('topicIds est requis');
@@ -29,20 +45,14 @@ module.exports = class JVCController {
         return topics.length === 1;
     }
 
-    static async createTopic(forumId, viewId, topicId) {
-        const topicInfo = await getTopicInfo(forumId, viewId, topicId);
-
-        if (topicInfo === null) {
-            throw new Error('Ce topic n\'existe pas');
-        }
-
+    static async createTopic(data) {
         const topicData = {
-            Id: topicId,
-            Title: topicInfo.title,
-            JVCForumId: forumId,
-            CreationDate: topicInfo.date,
-            FirstPostContent: topicInfo.content,
-            FirstPostUsername: topicInfo.author
+            Id: data.topicId,
+            Title: data.topicTitle,
+            JVCForumId: data.forumId,
+            CreationDate: data.topicDate,
+            FirstPostContent: data.topicContent,
+            FirstPostUsername: data.topicAuthor
         };
 
         await database
@@ -66,11 +76,11 @@ module.exports = class JVCController {
         }
 
         if (!(await ForumController.exists(data.forumId))) {
-            await ForumController.create(data.forumId);
+            await ForumController.create(data.forumId, data.forumName);
         }
 
         if (!(await this.topicExists(data.topicId))) {
-            await this.createTopic(data.forumId, data.viewId, data.topicId);
+            await this.createTopic(data);
         }
 
         const [postId] = await database

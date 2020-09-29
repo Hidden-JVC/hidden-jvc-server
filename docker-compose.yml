@@ -11,7 +11,7 @@ services:
     volumes:
       - ./database.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
   hidden-pgadmin:
     container_name: hidden-pgadmin
@@ -22,4 +22,4 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
     ports:
-      - "8181:80"
+      - "8182:80"

@@ -22,8 +22,8 @@ router.post('/:topicId', async (req, res, next) => {
     try {
         const { userId } = res.locals;
         const { topicId } = req.params;
-        const { forumId, viewId, content, page, username } = req.body;
-        const data = { userId, topicId: parseInt(topicId), forumId, viewId, content, page, username };
+        const { forumId, forumName, viewId, content, page, username, topicTitle, topicDate, topicContent, topicAuthor } = req.body;
+        const data = { userId, topicId: parseInt(topicId), forumId, forumName, viewId, content, page, username, topicTitle, topicDate, topicContent, topicAuthor };
 
         const { postId } = await JVCController.createPost(data);
         res.json({ postId });

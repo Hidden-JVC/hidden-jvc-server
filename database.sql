@@ -66,6 +66,7 @@ CREATE TABLE "JVCTopic" (
     "Id" INTEGER NOT NULL, -- Native JVC topic id
     "Title" VARCHAR(100) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL,
+    "IsTitleSafe" BOOLEAN DEFAULT FALSE,
 
     "FirstPostContent" VARCHAR(8000) NOT NULL,
     "FirstPostUsername" VARCHAR(15) NOT NULL,
@@ -338,6 +339,7 @@ $BODY$
                             ELSE json_build_object(
                                 'Id', "PostUser"."Id",
                                 'Name', "PostUser"."Name",
+					            'IsAdmin', "PostUser"."IsAdmin",
 					            'IsModerator', "PostModerator"."UserId" IS NOT NULL OR "PostUser"."IsAdmin"
                             ) END
                     ) ORDER BY "JVCPost"."CreationDate" ASC
@@ -389,7 +391,8 @@ $BODY$
                 ELSE json_build_object(
 					'Id', "TopicAuthor"."Id",
 					'Name', "TopicAuthor"."Name",
-					'IsModerator', "AuthorModerator"."UserId" IS NOT NULL OR "TopicAuthor"."IsAdmin"
+                    'IsAdmin', "TopicAuthor"."IsAdmin",
+					'IsModerator', "AuthorModerator"."UserId" IS NOT NULL
 				)
 			END,
 			'Tags', (
@@ -458,7 +461,8 @@ $BODY$
                         ELSE json_build_object(
                             'Id', "PostUser"."Id",
                             'Name', "PostUser"."Name",
-                            'IsModerator', "PostModerator"."UserId" IS NOT NULL OR "PostUser"."IsAdmin"
+                            'IsAdmin', "PostUser"."IsAdmin",
+                            'IsModerator', "PostModerator"."UserId" IS NOT NULL
                         )
                         END
                 ) ORDER BY "HiddenPost"."Op" DESC, "HiddenPost"."Pinned" DESC, "HiddenPost"."CreationDate" ASC
