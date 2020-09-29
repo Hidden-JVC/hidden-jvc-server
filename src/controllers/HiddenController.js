@@ -86,7 +86,7 @@ module.exports = class HiddenController {
         }
 
         if (!(await ForumController.exists(data.forumId))) {
-            await ForumController.create(data.forumId);
+            await ForumController.create(data.forumId, data.forumName);
         }
 
         const [topicId] = await database
