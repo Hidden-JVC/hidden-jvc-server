@@ -19,8 +19,8 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
     try {
         const { userId } = res.locals;
-        const { title, content, username, forumId } = req.body;
-        const data = { title, content, username, forumId, userId };
+        const { title, content, username, forumId, forumName } = req.body;
+        const data = { title, content, username, forumId, forumName, userId };
 
         const { topicId } = await HiddenController.createTopic(data);
         res.json({ topicId });
