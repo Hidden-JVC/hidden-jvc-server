@@ -41,7 +41,6 @@ module.exports = class HiddenController {
         }
 
         const pagination = parsePagination(data, 'Json', 1, 20, 'ASC');
-
         const [{ HiddenTopicPostsJson: topic }] = await database
             .select('*')
             .from(database.raw('"HiddenTopicPostsJson"(?, ?, ?, ?)', [data.topicId, pagination.offset, 20, data.userId]));

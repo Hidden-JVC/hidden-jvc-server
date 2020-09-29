@@ -38,7 +38,7 @@ router.post('/register', async (req, res, next) => {
 
         const jwt = await createJWT(userId, name, sessionId);
 
-        res.json({ jwt, userId });
+        res.json({ jwt, userId, isAdmin: false, moderators: [] });
     } catch (err) {
         next(err);
     }
