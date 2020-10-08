@@ -1,0 +1,2 @@
+ALTER TABLE "User" ALTER COLUMN "Password" DROP NOT NULL;
+UPDATE "User" SET "Password" = NULL;

@@ -11,9 +11,9 @@ router.get('/', async (req, res, next) => {
 
         const result = await database
             .select('*')
-            .from(database.raw('"JVCForumJson"(?, 20)', [pagination.offset]));
+            .from(database.raw('"JVCForumListJson"(?, 20)', [pagination.offset]));
 
-        const forums = result.map((row) => row.JVCForumJson);
+        const forums = result.map((row) => row.JVCForumListJson);
 
         const [{ count }] = await database
             .select(database.raw('count(*)::integer'))

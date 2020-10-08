@@ -9,14 +9,13 @@ module.exports = class JVCController {
 
         const forums = await database
             .select('*')
-            .from('JVCForum')
-            .where('Id', '=', data.forumId);
+            .from(database.raw('"JVCForumJson"(?)', data.forumId));
 
         if (forums.length === 0) {
             throw new Error('Ce forum n\'existe pas');
         }
 
-        return forums[0];
+        return forums[0].JVCForumJson;
     }
 
     static async getTopics(data) {

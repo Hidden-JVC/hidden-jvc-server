@@ -6,8 +6,13 @@ CREATE TABLE "User" (
     "Name" VARCHAR(15) NOT NULL UNIQUE CONSTRAINT "User_Name_Min_Length_Check" CHECK(char_length("Name") >= 3),
     "Password" CHAR(60) NOT NULL,
     "IsAdmin" BOOLEAN NOT NULL DEFAULT FALSE,
+    "Kicked" BOOLEAN DEFAULT FALSE,
+    "Banned" BOOLEAN DEFAULT FALSE,
+
     "Email" VARCHAR(50) NULL,
     "ProfilePicture" VARCHAR(200) NULL,
+    "Signature" VARCHAR(400) NULL,
+
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
 
     PRIMARY KEY ("Id")
@@ -255,8 +260,32 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION "ModerationLogJson" (
+	IN "_Offset" INTEGER DEFAULT 0,
+    IN "_Limit" INTEGER DEFAULT 20,
+    IN "_UserId" INTEGER DEFAULT NULL
+) RETURNS SETOF JSON AS
+$BODY$
+    BEGIN
+        RETURN QUERY SELECT json_build_object(
+            'ModerationLog', "ModerationLog".*,
+            'User', json_build_object (
+                'Name', "User"."Name"
+            )
+        )
+        FROM "ModerationLog"
+        LEFT JOIN "User"
+            ON "ModerationLog"."UserId" = "User"."Id"
+        WHERE ("_UserId" IS NULL OR "_UserId" = "User"."Id")
+        ORDER BY "ModerationLog"."Date" DESC
+        OFFSET "_Offset"
+        LIMIT "_Limit";
+    END
+$BODY$
+LANGUAGE plpgsql;
+
 -- List of forums
-CREATE OR REPLACE FUNCTION "JVCForumJson" (
+CREATE OR REPLACE FUNCTION "JVCForumListJson" (
     IN "_Offset" INTEGER DEFAULT 0,
     IN "_Limit" INTEGER DEFAULT 20
 ) RETURNS SETOF JSON AS
@@ -292,6 +321,31 @@ $BODY$
         FROM "JVCForum"
         OFFSET "_Offset"
         LIMIT "_Limit";
+    END
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION "JVCForumJson" (
+    IN "_ForumId" INTEGER
+) RETURNS SETOF JSON AS
+$BODY$
+    BEGIN
+        RETURN QUERY SELECT json_build_object (
+            'Forum', "JVCForum".*,
+            'Moderators', json_agg (
+                json_build_object (
+                    'Id', "User"."Id",
+                    'Name', "User"."Name"
+                )
+            )
+        )
+        FROM "JVCForum"
+        JOIN "Moderator"
+            ON "Moderator"."ForumId" = "JVCForum"."Id"
+        JOIN "User"
+            ON "User"."Id" = "Moderator"."UserId"
+        WHERE "JVCForum"."Id" = "_ForumId"
+        GROUP BY "JVCForum"."Id"
     END
 $BODY$
 LANGUAGE plpgsql;
@@ -462,6 +516,8 @@ $BODY$
                             'Id', "PostUser"."Id",
                             'Name', "PostUser"."Name",
                             'IsAdmin', "PostUser"."IsAdmin",
+                            'ProfilePicture', "PostUser"."ProfilePicture",
+                            'Signature', "PostUser"."Signature",
                             'IsModerator', "PostModerator"."UserId" IS NOT NULL
                         )
                         END
@@ -481,7 +537,7 @@ $BODY$
             LIMIT "_PostLimit"
         ) "HiddenPost" ON TRUE
         LEFT JOIN LATERAL (
-            SELECT "Id", "Name", "IsAdmin"
+            SELECT "Id", "Name", "IsAdmin", "ProfilePicture", "Signature"
             FROM "User"
             WHERE "User"."Id" = "HiddenPost"."UserId"
         ) "PostUser" ON TRUE
