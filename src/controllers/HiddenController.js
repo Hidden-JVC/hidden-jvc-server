@@ -7,6 +7,10 @@ module.exports = class HiddenController {
     static async getTopics(data) {
         const pagination = parsePagination(data, 'TopicListJson', 1, 20, 'DESC');
 
+        if (isNaN(data.forumId)) {
+            throw new Error('forumId est requis');
+        }
+
         if (!data.startDate) {
             data.startDate = null;
         }
@@ -72,7 +76,8 @@ module.exports = class HiddenController {
 
         const postData = {
             Content: data.content,
-            Op: true
+            Op: true,
+            Ip: data.ip
         };
 
         if (data.userId) {
@@ -86,6 +91,9 @@ module.exports = class HiddenController {
         }
 
         if (!(await ForumController.exists(data.forumId))) {
+            if (typeof data.forumName !== 'string' || data.forumName.length === 0) {
+                throw new Error('data.forumName est requis');
+            }
             await ForumController.create(data.forumId, data.forumName);
         }
 
@@ -122,7 +130,8 @@ module.exports = class HiddenController {
 
         const postData = {
             Content: data.content,
-            HiddenTopicId: data.topicId
+            HiddenTopicId: data.topicId,
+            Ip: data.ip
         };
 
         if (data.userId) {
@@ -154,10 +163,25 @@ module.exports = class HiddenController {
     }
 
     static async hasUserRightOnHiddenTopics(userId, action, topicIds) {
-        const [{ HasUserRightOnHiddenTopics }] = await database
-            .select('*')
-            .from(database.raw('"HasUserRightOnHiddenTopics"(?, ?, ?)', [userId, action, topicIds.join(',')]));
-        return HasUserRightOnHiddenTopics;
+        for (const topicId of topicIds) {
+            const [topic] = await database.select('*').from('HiddenTopic').where('Id', '=', topicId);
+
+            if (!topic) {
+                return false;
+            }
+
+            const [moderator] = await database
+                .select('*').from('Moderator')
+                .where('UserId', '=', userId)
+                .where('ForumId', '=', topic.JVCForumId)
+                .where(database.raw('? = ANY("Actions")', [action]));
+
+            if (!moderator) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     static async updatePostPinned(data) {
@@ -197,13 +221,155 @@ module.exports = class HiddenController {
     }
 
     static async postModeration(action, ids, userId) {
+        if (typeof action !== 'string') {
+            throw new Error('action  doit être un string');
+        }
+
+        if (!Array.isArray(ids)) {
+            throw new Error('ids doit être un tableau');
+        }
+
+        if (typeof userId !== 'number') {
+            throw new Error('ids doit être un entier');
+        }
+
+        const [user] = await database
+            .select('*')
+            .from('User')
+            .where('Id', '=', userId);
+
+        if (!user) {
+            throw new Error('utilisateur non existant');
+        }
+
+        let allowed = user.IsAdmin;
+
+        let posts = null;
+        if (!allowed) {
+            posts = await database
+                .select('*')
+                .from('HiddenPost')
+                .whereIn('Id', ids);
+
+            const topicIds = posts.map((post) => post.HiddenTopicId);
+
+            allowed = await this.hasUserRightOnHiddenTopics(userId, action, topicIds);
+        }
+
+        // regular users can delete their own posts
+        if (!allowed && action === 'Delete') {
+            allowed = posts.every((post) => post.UserId !== null && post.UserId === userId);
+        }
+
+        if (!allowed) {
+            throw new Error('not allowed');
+        }
+
         switch (action) {
-            case 'DeletePost':
+            case 'Delete':
                 await this.deletePost(ids, action, userId);
+                break;
+            case 'BanAccount':
+                await this.banAccountFromPost(ids, action, userId, true);
+                break;
+            case 'UnBanAccount':
+                await this.banAccountFromPost(ids, action, userId, false);
+                break;
+            case 'BanIp':
+                await this.banIp(ids, action, userId);
+                break;
+            case 'UnBanIp':
+                await this.unBanIp(ids, action, userId);
                 break;
             default:
                 throw new Error('unknown action');
         }
+    }
+
+    static async banIp(postIds, action, userId) {
+        const posts = await database
+            .select('*')
+            .from('HiddenPost')
+            .whereIn('Id', postIds);
+
+        for (const post of posts) {
+            if (post.Ip === null) {
+                continue;
+            }
+
+            const [banIp] = await database
+                .select('*')
+                .from('BannedIp')
+                .where('Ip', '=', post.Ip);
+
+            if (banIp) {
+                continue;
+            }
+
+            await database
+                .insert({ Ip: post.Ip })
+                .into('BannedIp');
+
+            let label;
+            if (post.UserId === null) {
+                label = 'Un utilisateur anonyme a été ban ip';
+            } else {
+                const [user] = await database.select('*').from('User').where('Id', '=', post.UserId);
+                label = `L'utilisateur ${user.Name} a été ban ip`;
+            }
+
+            await database
+                .insert({
+                    Action: action,
+                    UserId: userId,
+                    Label: label
+                })
+                .into('ModerationLog');
+        }
+    }
+
+    static async unBanIp(postIds, action, userId) {
+        const posts = await database
+            .select('*')
+            .from('HiddenPost')
+            .whereIn('Id', postIds);
+
+        const ips = posts.filter((post) => post.Ip !== null)
+            .map((post) => post.Ip);
+
+        await database('BannedIp')
+            .del()
+            .whereIn('Ip', ips);
+    }
+
+    static async banAccountFromPost(ids, action, userId, banned) {
+        const posts = await database
+            .select('*')
+            .from('HiddenPost')
+            .whereIn('Id', ids);
+
+        const userIds = posts
+            .filter((post) => post.UserId !== null)
+            .map((post) => post.UserId);
+
+        await database('User')
+            .update({ Banned: banned })
+            .whereIn('Id', userIds);
+
+        const users = await database
+            .select('*')
+            .from('User')
+            .whereIn('Id', userIds);
+
+        const data = users.map((user) => ({
+            Action: action,
+            UserId: userId,
+            Label: `L'utilisateur ${user.Name} a été ${banned ? 'banni' : 'débanni'}`
+        }));
+
+        await database
+            .insert(data)
+            .into('ModerationLog');
     }
 
     static async topicModeration(action, ids, userId) {
@@ -243,7 +409,7 @@ module.exports = class HiddenController {
                 await this.unlock(ids, action, userId);
                 break;
 
-            case 'DeleteTopic':
+            case 'Delete':
                 await this.deleteTopic(ids, action, userId);
                 break;
 
@@ -270,6 +436,7 @@ module.exports = class HiddenController {
                 Label: `Le topic "${topic.Title}" (#${topic.Id}) a été épinglé`
             });
         }
+
         await database
             .insert(data)
             .into('ModerationLog');

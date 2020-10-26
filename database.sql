@@ -1,12 +1,10 @@
 SET timezone = 'Europe/Paris';
 
--- Hidden JVC registered account
 CREATE TABLE "User" (
     "Id" SERIAL,
     "Name" VARCHAR(15) NOT NULL UNIQUE CONSTRAINT "User_Name_Min_Length_Check" CHECK(char_length("Name") >= 3),
     "Password" CHAR(60) NOT NULL,
     "IsAdmin" BOOLEAN NOT NULL DEFAULT FALSE,
-    "Kicked" BOOLEAN DEFAULT FALSE,
     "Banned" BOOLEAN DEFAULT FALSE,
 
     "Email" VARCHAR(50) NULL,
@@ -18,7 +16,6 @@ CREATE TABLE "User" (
     PRIMARY KEY ("Id")
 );
 
--- User session
 CREATE TABLE "Session" (
     "Id" SERIAL,
     "UserId" INTEGER NOT NULL UNIQUE,
@@ -28,7 +25,6 @@ CREATE TABLE "Session" (
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE
 );
 
--- Represents a real JVC forum (eg: Forum 18-25 ans["Id"=51] or Forum Informatique["Id"=1])
 CREATE TABLE "JVCForum" (
     "Id" INTEGER NOT NULL, -- Native JVC forum id
     "Name" VARCHAR(200) NOT NULL,
@@ -37,12 +33,11 @@ CREATE TABLE "JVCForum" (
 );
 
 CREATE TYPE "ModerationAction" AS ENUM (
+    'Delete',
     'Pin', 'UnPin',
     'Lock', 'UnLock',
-    'DeleteTopic',
-    'DeletePost',
-    'Kick', 'UnKick',
-    'Ban', 'UnBan'
+    'BanIp', 'UnBanIp',
+    'BanAccount', 'UnBanAccount'
 );
 
 CREATE TABLE "Moderator" (
@@ -58,15 +53,15 @@ CREATE TABLE "Moderator" (
 CREATE TABLE "ModerationLog" (
     "Id" SERIAL,
     "Action" "ModerationAction" NOT NULL,
-    "UserId" INTEGER NOT NULL,
+    "Reason" VARCHAR(300) NULL,
+    "UserId" INTEGER NULL,
     "Date" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
     "Label" VARCHAR(500) NOT NULL,
 
     PRIMARY KEY ("Id"),
-    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE
+    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE SET NULL
 );
 
--- Represents a real JVC topic
 CREATE TABLE "JVCTopic" (
     "Id" INTEGER NOT NULL, -- Native JVC topic id
     "Title" VARCHAR(100) NOT NULL,
@@ -82,13 +77,13 @@ CREATE TABLE "JVCTopic" (
     FOREIGN KEY ("JVCForumId") REFERENCES "JVCForum" ("Id") ON DELETE CASCADE
 );
 
--- Represents an Hidden JVC post on a real JVC topic
 CREATE TABLE "JVCPost" (
     "Id" SERIAL,
     "Content" VARCHAR(16000) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
     "ModificationDate" TIMESTAMP NULL,
     "Page" INTEGER NOT NULL, -- the page on which the post was created, might not be accurate if some actual jvc posts are removed
+    "Ip" INET NULL,
 
     "UserId" INTEGER NULL, -- logged in user
     "Username" VARCHAR(15) NULL, -- anonymous user
@@ -100,7 +95,6 @@ CREATE TABLE "JVCPost" (
     FOREIGN KEY ("JVCTopicId") REFERENCES "JVCTopic" ("Id") ON DELETE CASCADE
 );
 
--- Represents an indepandant Hidden JVC topic
 CREATE TABLE "HiddenTopic" (
     "Id" SERIAL,
     "Title" VARCHAR(100) NOT NULL,
@@ -134,7 +128,6 @@ CREATE TABLE "HiddenTopicTag" (
     FOREIGN KEY ("TagId") REFERENCES "HiddenTag" ("Id")
 );
 
--- Represents an indepandant Hidden JVC post
 CREATE TABLE "HiddenPost" (
     "Id" SERIAL,
     "Content" VARCHAR(16000) NOT NULL,
@@ -142,6 +135,7 @@ CREATE TABLE "HiddenPost" (
     "ModificationDate" TIMESTAMP NULL,
     "Op" BOOLEAN NOT NULL DEFAULT FALSE,
     "Pinned" BOOLEAN NOT NULL DEFAULT FALSE,
+    "Ip" INET NULL,
 
     "UserId" INTEGER NULL,  -- logged in user
     "Username" VARCHAR(15) NULL, -- anonymous user
@@ -177,88 +171,25 @@ CREATE TABLE "SurveyOption" (
 CREATE TABLE "SurveyAnswer" (
     "SurveyId" INTEGER NOT NULL,
     
-    "UserId" INTEGER NOT NULL,
+    "UserId" INTEGER NULL,
     "SurveyOptionId" INTEGER NOT NULL,
 
     PRIMARY KEY ("SurveyId", "UserId", "SurveyOptionId"),
-    FOREIGN KEY ("SurveyId") REFERENCES "Survey" ("Id") ON DELETE CASCADE
-    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE
+    FOREIGN KEY ("SurveyId") REFERENCES "Survey" ("Id") ON DELETE CASCADE,
+    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE SET NULL,
     FOREIGN KEY ("SurveyOptionId") REFERENCES "SurveyOption" ("Id") ON DELETE CASCADE
 );
 
+CREATE TABLE "BannedIp" (
+    "Ip" INET,
+    "Reason" VARCHAR(300) NULL,
+    "StartDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
+    "EndDate" TIMESTAMP NULL,
+
+    PRIMARY KEY ("Ip")
+);
+
 CREATE INDEX "HiddenPost_TopicId_Index" ON "HiddenPost" ("HiddenTopicId");
-
-CREATE OR REPLACE FUNCTION "HasUserRightOnHiddenTopics" (
-    IN "_UserId" INTEGER,
-    IN "_Action" "ModerationAction",
-    IN "_TopicIds" VARCHAR DEFAULT NULL -- comma separated list of HiddenTopic Id
-) RETURNS BOOLEAN AS
-$BODY$
-    DECLARE "_ForumIds" INTEGER[];
-    DECLARE "_ForumCount" INTEGER;
-    DECLARE "_ModeratorCount" INTEGER;
-
-    BEGIN
-        "_ForumIds" := ARRAY(
-            SELECT DISTINCT "JVCForumId"
-            FROM "HiddenTopic"
-            WHERE "Id" = ANY(string_to_array("_TopicIds", ',')::INTEGER[])
-        );
-
-        "_ForumCount" := COALESCE(array_length("_ForumIds", 1), 0);
-
-        IF "_ForumCount" = 0 THEN
-            RETURN FALSE;
-        END IF;
-
-        "_ModeratorCount" := (
-            SELECT COUNT(*)
-            FROM "Moderator"
-            WHERE "UserId" = "_UserId"
-            AND "_Action" = ANY("Actions")
-            AND "ForumId" = ANY("_ForumIds")
-        );
-
-        RETURN "_ModeratorCount" = "_ForumCount";
-    END
-$BODY$
-LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION "HasUserRightOnJVCTopics" (
-    IN "_UserId" INTEGER,
-    IN "_Action" "ModerationAction",
-    IN "_TopicIds" VARCHAR DEFAULT NULL -- comma separated list of JVCTopic Id
-) RETURNS BOOLEAN AS
-$BODY$
-    DECLARE "_ForumIds" INTEGER[];
-    DECLARE "_ForumCount" INTEGER;
-    DECLARE "_ModeratorCount" INTEGER;
-
-    BEGIN
-        "_ForumIds" := ARRAY(
-            SELECT DISTINCT "JVCForumId"
-            FROM "JVCTopic"
-            WHERE "Id" = ANY(string_to_array("_TopicIds", ',')::INTEGER[])
-        );
-
-        "_ForumCount" := COALESCE(array_length("_ForumIds", 1), 0);
-
-        IF "_ForumCount" = 0 THEN
-            RETURN FALSE;
-        END IF;
-
-        "_ModeratorCount" := (
-            SELECT COUNT(*)
-            FROM "Moderator"
-            WHERE "UserId" = "_UserId"
-            AND "_Action" = ANY("Actions")
-            AND "ForumId" = ANY("_ForumIds")
-        );
-
-        RETURN "_ModeratorCount" = "_ForumCount";
-    END
-$BODY$
-LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION "ModerationLogJson" (
 	IN "_Offset" INTEGER DEFAULT 0,
@@ -274,7 +205,7 @@ $BODY$
             )
         )
         FROM "ModerationLog"
-        LEFT JOIN "User"
+        INNER JOIN "User"
             ON "ModerationLog"."UserId" = "User"."Id"
         WHERE ("_UserId" IS NULL OR "_UserId" = "User"."Id")
         ORDER BY "ModerationLog"."Date" DESC
@@ -284,7 +215,6 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
--- List of forums
 CREATE OR REPLACE FUNCTION "JVCForumListJson" (
     IN "_Offset" INTEGER DEFAULT 0,
     IN "_Limit" INTEGER DEFAULT 20
@@ -332,25 +262,24 @@ $BODY$
     BEGIN
         RETURN QUERY SELECT json_build_object (
             'Forum', "JVCForum".*,
-            'Moderators', json_agg (
+            'Moderators', CASE WHEN MIN("Moderator"."ForumId") IS NOT NULL THEN json_agg (
                 json_build_object (
                     'Id', "User"."Id",
                     'Name', "User"."Name"
                 )
-            )
+            ) ELSE '[]'::json END
         )
         FROM "JVCForum"
-        JOIN "Moderator"
+        LEFT JOIN "Moderator"
             ON "Moderator"."ForumId" = "JVCForum"."Id"
-        JOIN "User"
+        LEFT JOIN "User"
             ON "User"."Id" = "Moderator"."UserId"
         WHERE "JVCForum"."Id" = "_ForumId"
-        GROUP BY "JVCForum"."Id"
+        GROUP BY "JVCForum"."Id";
     END
 $BODY$
 LANGUAGE plpgsql;
 
--- List of JVCTopic
 CREATE OR REPLACE FUNCTION "JVCTopicListJson" (
 	IN "_TopicIds" VARCHAR DEFAULT NULL -- comma separated list of JVCTopic Id
 ) RETURNS SETOF JSON AS
@@ -366,7 +295,6 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
--- List of post from a JVCTopic between a time span
 CREATE OR REPLACE FUNCTION "JVCTopicPostsJson" (
     IN "_TopicId" INTEGER,
     IN "_startDate" TIMESTAMP,
@@ -426,7 +354,6 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
--- List of HiddenTopic
 CREATE OR REPLACE FUNCTION "HiddenTopicListJson" (
     IN "_ForumId" INTEGER,
     IN "_Pinned" BOOLEAN DEFAULT NULL,
@@ -483,7 +410,6 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
--- List of post from an HiddenTopic
 CREATE OR REPLACE FUNCTION "HiddenTopicPostsJson" (
     IN "_TopicId" INTEGER,
     IN "_PostOffset" INTEGER DEFAULT 0,
@@ -516,9 +442,11 @@ $BODY$
                             'Id', "PostUser"."Id",
                             'Name', "PostUser"."Name",
                             'IsAdmin', "PostUser"."IsAdmin",
+                            'Banned', "PostUser"."Banned",
                             'ProfilePicture', "PostUser"."ProfilePicture",
                             'Signature', "PostUser"."Signature",
-                            'IsModerator', "PostModerator"."UserId" IS NOT NULL
+                            'IsModerator', "PostModerator"."UserId" IS NOT NULL,
+                            'IpBanned', "BannedIp"."Ip" IS NOT NULL
                         )
                         END
                 ) ORDER BY "HiddenPost"."Op" DESC, "HiddenPost"."Pinned" DESC, "HiddenPost"."CreationDate" ASC
@@ -526,7 +454,7 @@ $BODY$
             'PostsCount', MIN("HiddenPost"."Count")
         )
         FROM "HiddenTopic"
-        LEFT JOIN "User" ON "User"."Id" = "HiddenTopic"."UserId" -- remove this join ?
+        LEFT JOIN "User" ON "User"."Id" = "HiddenTopic"."UserId"
         LEFT JOIN LATERAL (
             SELECT *, COUNT(*) OVER() AS "Count"
             FROM "HiddenPost"
@@ -537,10 +465,15 @@ $BODY$
             LIMIT "_PostLimit"
         ) "HiddenPost" ON TRUE
         LEFT JOIN LATERAL (
-            SELECT "Id", "Name", "IsAdmin", "ProfilePicture", "Signature"
+            SELECT *
             FROM "User"
             WHERE "User"."Id" = "HiddenPost"."UserId"
         ) "PostUser" ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT *
+            FROM "BannedIp"
+            WHERE "BannedIp"."Ip" = "HiddenPost"."Ip"
+        ) "BannedIp" ON TRUE
         LEFT JOIN LATERAL (
             SELECT "UserId"
             FROM "Moderator"

@@ -29,6 +29,20 @@ router.post('/login', async (req, res, next) => {
     }
 });
 
+// /users/moderation
+router.post('/moderation', authRequired, async (req, res, next) => {
+    try {
+        const { userId: connectedUserId } = res.locals;
+        const { action, userId } = req.body;
+        const data = { connectedUserId, action, userId };
+        await UserController.moderation(data);
+
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
+
 // /users
 router.get('/', async (req, res, next) => {
     try {
@@ -38,7 +52,7 @@ router.get('/', async (req, res, next) => {
     }
 });
 
-// /users:userId
+// /users/:userId
 router.get('/:userId', async (req, res, next) => {
     try {
         const { userId } = req.params;
@@ -51,13 +65,12 @@ router.get('/:userId', async (req, res, next) => {
     }
 });
 
-// /users:userId
+// /users/:userId
 router.post('/:userId', authRequired, async (req, res, next) => {
     try {
         const { userId } = req.params;
         const { userId: connectedUserId } = res.locals;
         const { email, signature, profilePicture } = req.body;
-        // const 
         const data = { userId: parseInt(userId), email, signature, profilePicture, connectedUserId };
         await UserController.updateUser(data);
 

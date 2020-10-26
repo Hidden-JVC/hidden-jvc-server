@@ -10,7 +10,7 @@ module.exports = class HiddenController {
         }
 
         const users = await database
-            .select(['Id', 'Name', 'Email', 'ProfilePicture', 'Signature', 'Kicked', 'Banned', 'CreationDate'])
+            .select(['Id', 'Name', 'Email', 'ProfilePicture', 'Signature', 'Banned', 'CreationDate'])
             .from('User')
             .where('Id', '=', data.userId);
 
@@ -132,5 +132,61 @@ module.exports = class HiddenController {
         const jwt = await createJWT(user.Id, user.Name, sessionId);
 
         return { jwt, userId: user.Id, isAdmin: user.IsAdmin, moderators };
+    }
+
+    static async hasRightToModerateUsers(userId, action) {
+        const [moderator] = await database
+            .select('*').from('Moderator')
+            .where('UserId', '=', userId)
+            .where(database.raw('? = ANY("Actions")', [action]));
+
+        if (!moderator) {
+            return false;
+        }
+
+        return true;
+    }
+
+    static async moderation(data) {
+        const [user] = await database.select('*').from('User').where('Id', '=', data.connectedUserId);
+
+        let allowed = user.IsAdmin;
+
+        if (!allowed) {
+            allowed = await this.hasRightToModerateUsers(data.connectedUserId, data.action);
+        }
+
+        if (!allowed) {
+            throw new Error('not allowed');
+        }
+
+        switch (data.action) {
+            case 'BanAccount':
+                await this.updateBanAccount(data.connectedUserId, data.action, data.userId, true);
+                break;
+            case 'UnBanAccount':
+                await this.updateBanAccount(data.connectedUserId, data.action, data.userId, false);
+                break;
+        }
+    }
+
+    static async updateBanAccount(connectedUserId, action, userId, banned) {
+        const [user] = await database.select('*').from('User').where('Id', '=', userId);
+
+        await database('User')
+            .update({ Banned: banned })
+            .where('Id', '=', userId);
+
+        await database
+            .insert({
+                Action: action,
+                UserId: connectedUserId,
+                Label: `L'utilisateur ${user.Name} a été ${banned ? 'banni' : 'débanni'}`
+            })
+            .into('ModerationLog');
+    }
+
+    static async banIp() {
+
     }
 };
