@@ -1,3 +1,5 @@
+const { differenceInSeconds } = require('date-fns');
+
 const database = require('../database.js');
 
 const ForumController = require('./ForumController.js');
@@ -90,6 +92,14 @@ module.exports = class HiddenController {
             throw new Error('Vous devez être connecté ou renseigné le champ post.username');
         }
 
+        if ((await this.isIpBanned(data.ip))) {
+            throw new Error('ban');
+        }
+
+        if (!(await this.checkPostCooldown(data.ip, data.userId))) {
+            throw new Error('cooldown');
+        }
+
         if (!(await ForumController.exists(data.forumId))) {
             if (typeof data.forumName !== 'string' || data.forumName.length === 0) {
                 throw new Error('data.forumName est requis');
@@ -142,6 +152,14 @@ module.exports = class HiddenController {
             throw new Error('Vous devez être connecté ou renseigné le champ data.username');
         }
 
+        if ((await this.isIpBanned(data.ip))) {
+            throw new Error('ban');
+        }
+
+        if (!(await this.checkPostCooldown(data.ip, data.userId))) {
+            throw new Error('cooldown');
+        }
+
         const [topic] = await database
             .select('*')
             .from('HiddenTopic')
@@ -191,6 +209,10 @@ module.exports = class HiddenController {
 
         if (typeof data.pinned !== 'boolean') {
             throw new Error('data.pinned doit être un boolean');
+        }
+
+        if ((await this.isIpBanned(data.ip))) {
+            throw new Error('ban');
         }
 
         const [post] = await database
@@ -328,7 +350,7 @@ module.exports = class HiddenController {
         }
     }
 
-    static async unBanIp(postIds, action, userId) {
+    static async unBanIp(postIds) {
         const posts = await database
             .select('*')
             .from('HiddenPost')
@@ -557,9 +579,26 @@ module.exports = class HiddenController {
             .whereIn('Id', ids);
     }
 
+    static async isIpBanned(ip) {
+        const rows = await database
+            .select('*')
+            .from('BannedIp')
+            .where('Ip', '=', ip);
+
+        return rows.length > 0;
+    }
+
     static async updatePostContent(data) {
         if (typeof data.postId !== 'number') {
             throw new Error('postId est requis');
+        }
+
+        if ((await this.isIpBanned(data.ip))) {
+            throw new Error('ban');
+        }
+
+        if (!(await this.checkPostCooldown(data.ip, data.userId))) {
+            throw new Error('cooldown');
         }
 
         const [post] = await database
@@ -578,5 +617,49 @@ module.exports = class HiddenController {
         await database('HiddenPost')
             .update({ Content: data.content, ModificationDate: new Date() })
             .where('Id', '=', data.postId);
+    }
+
+    static async getLastPostFromIp(ip) {
+        // get modification date ?
+        const posts = await database
+            .select('*')
+            .from('HiddenPost')
+            .where('Ip', '=', ip)
+            .orderBy('CreationDate', 'DESC')
+            .limit(1);
+
+        return posts.length > 0 ? posts[0] : null;
+    }
+
+    static async checkPostCooldown(ip, userId) {
+        const lastPost = await this.getLastPostFromIp(ip);
+        if (lastPost === null) {
+            return true;
+        }
+
+        const seconds = differenceInSeconds(new Date(), new Date(lastPost.CreationDate));
+
+        if (userId) {
+            const postsCount = await this.getUserPostsCount(userId);
+            if (postsCount > 200) {
+                return true;
+            } else if (postsCount > 100) {
+                return seconds > 30;
+            } else {
+                return seconds > 60;
+            }
+        } else {
+            return seconds > 60; // 1 minutes cooldown for unregistered account
+        }
+    }
+
+    static async getUserPostsCount(userId) {
+        // TODO: add with union JVCPost
+        const [{ count }] = await database
+            .count('* as count')
+            .from('HiddenPost')
+            .where('UserId', '=', userId);
+
+        return parseInt(count);
     }
 };

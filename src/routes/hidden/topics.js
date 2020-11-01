@@ -61,10 +61,10 @@ router.post('/:topicId', async (req, res, next) => {
 // /hidden/topics/:topicId/:postId
 router.post('/:topicId/:postId', async (req, res, next) => {
     try {
-        const { userId } = res.locals;
+        const { userId, ip } = res.locals;
         const { postId } = req.params;
         const { content, pinned } = req.body;
-        const data = { userId, postId: parseInt(postId), content, pinned };
+        const data = { userId, postId: parseInt(postId), content, pinned, ip };
         if (typeof content === 'string') {
             await HiddenController.updatePostContent(data);
         } else if (typeof pinned === 'boolean') {
