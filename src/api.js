@@ -21,6 +21,8 @@ const getDurationInMilliseconds = (start) => {
 
 app.use(authenticate);
 
+app.set('trust proxy', 'loopback');
+
 // logs every requests
 app.use(function (req, res, next) {
     const start = process.hrtime();
@@ -35,7 +37,7 @@ app.use(function (req, res, next) {
     }
 
     res.locals.debug = req.query.debug === '1';
-    res.locals.ip = req.connection.remoteAddress;
+    res.locals.ip = req.ip;
 
     message = `${message} - ${res.locals.ip}`;
 

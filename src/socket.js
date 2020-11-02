@@ -2,8 +2,8 @@ const server = require('http').createServer();
 
 const io = require('socket.io')(server);
 
-let forums = {};
-let topics = {};
+const forums = {};
+const topics = {};
 
 io.on('connection', (socket) => {
     const ip = socket.request.connection.remoteAddress;
