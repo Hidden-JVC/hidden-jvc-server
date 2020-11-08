@@ -190,6 +190,7 @@ CREATE TABLE "BannedIp" (
 );
 
 CREATE INDEX "HiddenPost_TopicId_Index" ON "HiddenPost" ("HiddenTopicId");
+CREATE INDEX "HiddenTopic_LowerTitle_Index" ON "HiddenTopic"(lower("Title"));
 
 CREATE OR REPLACE FUNCTION "ModerationLogJson" (
 	IN "_Offset" INTEGER DEFAULT 0,
@@ -360,7 +361,9 @@ CREATE OR REPLACE FUNCTION "HiddenTopicListJson" (
     IN "_Offset" INTEGER DEFAULT 0,
     IN "_Limit" INTEGER DEFAULT 20,
     IN "_startDate" TIMESTAMP DEFAULT NULL,
-    IN "_endDate" TIMESTAMP DEFAULT NULL
+    IN "_endDate" TIMESTAMP DEFAULT NULL,
+	IN "_Search" VARCHAR DEFAULT NULL,
+	IN "_SearchType" VARCHAR DEFAULT NULL
 ) RETURNS SETOF JSON AS
 $BODY$
     BEGIN
@@ -403,6 +406,8 @@ $BODY$
         AND ("_startDate" IS NULL OR "LastHiddenPost"."CreationDate" <= "_startDate")
         AND ("_endDate" IS NULL OR "LastHiddenPost"."CreationDate" >= "_endDate")
         AND ("_Pinned" IS NULL OR "HiddenTopic"."Pinned" = "_Pinned")
+        AND ("_Search" IS NULL OR "_SearchType" <> 'Title' OR lower("HiddenTopic"."Title") LIKE concat('%', lower("_Search"), '%'))
+        AND ("_Search" IS NULL OR "_SearchType" <> 'Author' OR lower("TopicAuthor"."Name") LIKE concat('%', lower("_Search"), '%'))
         ORDER BY "HiddenTopic"."Pinned" DESC, "LastHiddenPost"."CreationDate" DESC
         OFFSET "_Offset"
         LIMIT "_Limit";
@@ -435,7 +440,8 @@ $BODY$
                             'ModificationDate', "HiddenPost"."ModificationDate",
                             'Op', "HiddenPost"."Op",
                             'Pinned', "HiddenPost"."Pinned",
-                            'Username', "HiddenPost"."Username"
+                            'Username', "HiddenPost"."Username",
+                            'IpBanned', "BannedIp"."Ip" IS NOT NULL
                         ),
                     'User', CASE WHEN "PostUser"."Id" IS NULL THEN NULL
                         ELSE json_build_object(
@@ -445,8 +451,7 @@ $BODY$
                             'Banned', "PostUser"."Banned",
                             'ProfilePicture', "PostUser"."ProfilePicture",
                             'Signature', "PostUser"."Signature",
-                            'IsModerator', "PostModerator"."UserId" IS NOT NULL,
-                            'IpBanned', "BannedIp"."Ip" IS NOT NULL
+                            'IsModerator', "PostModerator"."UserId" IS NOT NULL
                         )
                         END
                 ) ORDER BY "HiddenPost"."Op" DESC, "HiddenPost"."Pinned" DESC, "HiddenPost"."CreationDate" ASC
@@ -485,3 +490,13 @@ $BODY$
     END
 $BODY$
 LANGUAGE plpgsql;
+
+
+SELECT
+	(SELECT COUNT(*) FROM "HiddenTopic") AS "HiddenTopicCount",
+	(SELECT COUNT(*) FROM "HiddenTopic" WHERE "CreationDate" >= NOW() - INTERVAL '24 HOURS') AS "HiddenTopicCountLast24Hours",
+	(SELECT COUNT(*) FROM "HiddenPost") AS "HiddenPostCount",
+	(SELECT COUNT(*) FROM "JVCTopic") AS "JVCTopicCount",
+	(SELECT COUNT(*) FROM "JVCPost") AS "JVCPostCount",
+	(SELECT COUNT(*) FROM "User") AS "UserCount"
+

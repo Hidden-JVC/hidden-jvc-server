@@ -6,7 +6,7 @@ const forums = {};
 const topics = {};
 
 io.on('connection', (socket) => {
-    const ip = socket.request.connection.remoteAddress;
+    const ip = socket.handshake.headers['x-forwarded-for'] || socket.request.connection.remoteAddress;
     let forumId = null;
     let topicKey = null;
 

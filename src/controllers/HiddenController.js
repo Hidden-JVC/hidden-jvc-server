@@ -20,6 +20,13 @@ module.exports = class HiddenController {
             data.endDate = null;
         }
 
+        if (!data.search) {
+            data.search = null;
+        }
+        if (!data.searchType) {
+            data.searchType = null;
+        }
+
         let pinned = null;
         if (data.pinned === '1') {
             pinned = true;
@@ -29,7 +36,7 @@ module.exports = class HiddenController {
 
         const result = await database
             .select('*')
-            .from(database.raw('"HiddenTopicListJson"(?, ?, ?, ?, ?, ?)', [data.forumId, pinned, pagination.offset, 20, data.startDate, data.endDate]));
+            .from(database.raw('"HiddenTopicListJson"(?, ?, ?, ?, ?, ?, ?, ?)', [data.forumId, pinned, pagination.offset, 20, data.startDate, data.endDate, data.search, data.searchType]));
 
         const topics = result.map((row) => row.HiddenTopicListJson);
 
