@@ -52,11 +52,11 @@ router.get('/', async (req, res, next) => {
     }
 });
 
-// /users/:userId
-router.get('/:userId', async (req, res, next) => {
+// /users/:userName
+router.get('/:userName', async (req, res, next) => {
     try {
-        const { userId } = req.params;
-        const data = { userId: parseInt(userId) };
+        const { userName } = req.params;
+        const data = { userName };
         const user = await UserController.getUser(data);
 
         res.json({ user });

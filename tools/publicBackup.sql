@@ -7,3 +7,4 @@ Update "HiddenPost" SET "Ip" = NULL;
 Update "JVCPost" SET "Ip" = NULL;
 
 DELETE FROM "BannedIp";
+DELETE FROM "Session";

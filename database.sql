@@ -2,18 +2,36 @@ SET timezone = 'Europe/Paris';
 
 CREATE TABLE "User" (
     "Id" SERIAL,
-    "Name" VARCHAR(15) NOT NULL UNIQUE CONSTRAINT "User_Name_Min_Length_Check" CHECK(char_length("Name") >= 3),
+    "Name" CHARACTER VARYING(15) NOT NULL UNIQUE CONSTRAINT "User_Name_Min_Length_Check" CHECK(char_length("Name") >= 3),
     "Password" CHAR(60) NOT NULL,
     "IsAdmin" BOOLEAN NOT NULL DEFAULT FALSE,
     "Banned" BOOLEAN DEFAULT FALSE,
 
-    "Email" VARCHAR(50) NULL,
-    "ProfilePicture" VARCHAR(200) NULL,
-    "Signature" VARCHAR(400) NULL,
+    "Email" CHARACTER VARYING(50) NULL,
+    "ProfilePicture" CHARACTER VARYING(200) NULL,
+    "Signature" CHARACTER VARYING(400) NULL,
 
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
 
     PRIMARY KEY ("Id")
+);
+
+CREATE TABLE "Badge" (
+    "Id" SERIAL,
+    "Name" CHARACTER VARYING(50),
+    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
+
+    PRIMARY KEY ("Id")
+);
+
+CREATE TABLE "UserBadge" (
+    "UserId" INTEGER NOT NULL,
+    "BadgeId" INTEGER NOT NULL,
+    "AssociationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
+
+    PRIMARY KEY ("UserId", "BadgeId"),
+    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE,
+    FOREIGN KEY ("BadgeId") REFERENCES "Badge" ("Id") ON DELETE CASCADE
 );
 
 CREATE TABLE "Session" (
@@ -27,7 +45,7 @@ CREATE TABLE "Session" (
 
 CREATE TABLE "JVCForum" (
     "Id" INTEGER NOT NULL, -- Native JVC forum id
-    "Name" VARCHAR(200) NOT NULL,
+    "Name" CHARACTER VARYING(200) NOT NULL,
 
     PRIMARY KEY ("Id")
 );
@@ -53,10 +71,10 @@ CREATE TABLE "Moderator" (
 CREATE TABLE "ModerationLog" (
     "Id" SERIAL,
     "Action" "ModerationAction" NOT NULL,
-    "Reason" VARCHAR(300) NULL,
+    "Reason" CHARACTER VARYING(300) NULL,
     "UserId" INTEGER NULL,
     "Date" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
-    "Label" VARCHAR(500) NOT NULL,
+    "Label" CHARACTER VARYING(500) NOT NULL,
 
     PRIMARY KEY ("Id"),
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE SET NULL
@@ -64,12 +82,12 @@ CREATE TABLE "ModerationLog" (
 
 CREATE TABLE "JVCTopic" (
     "Id" INTEGER NOT NULL, -- Native JVC topic id
-    "Title" VARCHAR(100) NOT NULL,
+    "Title" CHARACTER VARYING(100) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL,
     "IsTitleSafe" BOOLEAN DEFAULT FALSE,
 
-    "FirstPostContent" VARCHAR(8000) NOT NULL,
-    "FirstPostUsername" VARCHAR(15) NOT NULL,
+    "FirstPostContent" CHARACTER VARYING(8000) NOT NULL,
+    "FirstPostUsername" CHARACTER VARYING(15) NOT NULL,
 
     "JVCForumId" INTEGER NOT NULL,
 
@@ -79,14 +97,14 @@ CREATE TABLE "JVCTopic" (
 
 CREATE TABLE "JVCPost" (
     "Id" SERIAL,
-    "Content" VARCHAR(16000) NOT NULL,
+    "Content" CHARACTER VARYING(16000) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
     "ModificationDate" TIMESTAMP NULL,
     "Page" INTEGER NOT NULL, -- the page on which the post was created, might not be accurate if some actual jvc posts are removed
     "Ip" INET NULL,
 
     "UserId" INTEGER NULL, -- logged in user
-    "Username" VARCHAR(15) NULL, -- anonymous user
+    "Username" CHARACTER VARYING(15) NULL, -- anonymous user
 
     "JVCTopicId" INTEGER NOT NULL,
 
@@ -97,14 +115,14 @@ CREATE TABLE "JVCPost" (
 
 CREATE TABLE "HiddenTopic" (
     "Id" SERIAL,
-    "Title" VARCHAR(100) NOT NULL,
+    "Title" CHARACTER VARYING(100) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
     "Pinned" BOOLEAN NOT NULL DEFAULT FALSE,
     "Locked" BOOLEAN NOT NULL DEFAULT FALSE,
     "JVCBackup" BOOLEAN NOT NULL DEFAULT FALSE, -- Si TRUE alors le topic est un backup d'un vrai topic jvc qui a été supprimé
 
     "UserId" INTEGER NULL, -- logged in user
-    "Username" VARCHAR(15) NULL, -- anonymous user
+    "Username" CHARACTER VARYING(15) NULL, -- anonymous user
     "JVCForumId" INTEGER NOT NULL,
 
     PRIMARY KEY ("Id"),
@@ -114,7 +132,7 @@ CREATE TABLE "HiddenTopic" (
 
 CREATE TABLE "HiddenTag" (
     "Id" SERIAL,
-    "Name" VARCHAR(100) NOT NULL,
+    "Name" CHARACTER VARYING(100) NOT NULL,
 
     PRIMARY KEY ("Id")
 );
@@ -130,7 +148,7 @@ CREATE TABLE "HiddenTopicTag" (
 
 CREATE TABLE "HiddenPost" (
     "Id" SERIAL,
-    "Content" VARCHAR(16000) NOT NULL,
+    "Content" CHARACTER VARYING(16000) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
     "ModificationDate" TIMESTAMP NULL,
     "Op" BOOLEAN NOT NULL DEFAULT FALSE,
@@ -138,7 +156,7 @@ CREATE TABLE "HiddenPost" (
     "Ip" INET NULL,
 
     "UserId" INTEGER NULL,  -- logged in user
-    "Username" VARCHAR(15) NULL, -- anonymous user
+    "Username" CHARACTER VARYING(15) NULL, -- anonymous user
 
     "HiddenTopicId" INTEGER NOT NULL,
 
@@ -149,7 +167,7 @@ CREATE TABLE "HiddenPost" (
 
 CREATE TABLE "Survey" (
     "Id" SERIAL,
-    "Question" VARCHAR(300) NOT NULL,
+    "Question" CHARACTER VARYING(300) NOT NULL,
     "IsOpen" BOOLEAN DEFAULT TRUE,
 
     "HiddenTopicId" INTEGER NOT NULL,
@@ -160,7 +178,7 @@ CREATE TABLE "Survey" (
 
 CREATE TABLE "SurveyOption" (
     "Id" SERIAL,
-    "Label" VARCHAR(300) NOT NULL,
+    "Label" CHARACTER VARYING(300) NOT NULL,
 
     "SurveyId" INTEGER NOT NULL,
 
@@ -182,7 +200,7 @@ CREATE TABLE "SurveyAnswer" (
 
 CREATE TABLE "BannedIp" (
     "Ip" INET,
-    "Reason" VARCHAR(300) NULL,
+    "Reason" CHARACTER VARYING(300) NULL,
     "StartDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
     "EndDate" TIMESTAMP NULL,
 
@@ -191,6 +209,41 @@ CREATE TABLE "BannedIp" (
 
 CREATE INDEX "HiddenPost_TopicId_Index" ON "HiddenPost" ("HiddenTopicId");
 CREATE INDEX "HiddenTopic_LowerTitle_Index" ON "HiddenTopic"(lower("Title"));
+
+CREATE OR REPLACE FUNCTION "UserJson" (
+    IN "_UserName" VARCHAR
+) RETURNS SETOF JSON AS
+$BODY$
+    BEGIN
+        RETURN QUERY SELECT json_build_object(
+            'User', json_build_object (
+                'Id', "User"."Id",
+                'Name', "User"."Name",
+                'CreationDate', "User"."CreationDate",
+                'Banned', "User"."Banned",
+                'Email', "User"."Email",
+                'ProfilePicture', "User"."ProfilePicture",
+                'Signature', "User"."Signature"
+            ),
+            'Badges',CASE WHEN MIN("Badge"."Id") IS NULL THEN '[]'::json ELSE
+                json_agg(
+                    json_build_object(
+                        'Id', "Badge"."Id",
+                        'Name', "Badge"."Name",
+                        'AssociationDate', "UserBadge"."AssociationDate"
+                    )
+                ) END
+        )
+        FROM "User"
+        LEFT JOIN "UserBadge"
+            ON "User"."Id" = "UserBadge"."UserId"
+        LEFT JOIN "Badge"
+            ON "Badge"."Id" = "UserBadge"."BadgeId"
+        WHERE "User"."Name" = "_UserName"
+        GROUP BY "User"."Id";
+    END
+$BODY$
+LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION "ModerationLogJson" (
 	IN "_Offset" INTEGER DEFAULT 0,
@@ -282,7 +335,7 @@ $BODY$
 LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION "JVCTopicListJson" (
-	IN "_TopicIds" VARCHAR DEFAULT NULL -- comma separated list of JVCTopic Id
+	IN "_TopicIds" CHARACTER VARYING DEFAULT NULL -- comma separated list of JVCTopic Id
 ) RETURNS SETOF JSON AS
 $BODY$
     BEGIN
@@ -362,8 +415,8 @@ CREATE OR REPLACE FUNCTION "HiddenTopicListJson" (
     IN "_Limit" INTEGER DEFAULT 20,
     IN "_startDate" TIMESTAMP DEFAULT NULL,
     IN "_endDate" TIMESTAMP DEFAULT NULL,
-	IN "_Search" VARCHAR DEFAULT NULL,
-	IN "_SearchType" VARCHAR DEFAULT NULL
+	IN "_Search" CHARACTER VARYING DEFAULT NULL,
+	IN "_SearchType" CHARACTER VARYING DEFAULT NULL
 ) RETURNS SETOF JSON AS
 $BODY$
     BEGIN

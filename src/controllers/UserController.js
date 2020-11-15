@@ -5,20 +5,19 @@ const { createJWT } = require('../helpers');
 
 module.exports = class HiddenController {
     static async getUser(data) {
-        if (typeof data.userId !== 'number' || isNaN(data.userId)) {
-            throw new Error('userId est requis');
+        if (typeof data.userName !== 'string') {
+            throw new Error('userName est requis');
         }
 
-        const users = await database
-            .select(['Id', 'Name', 'Email', 'ProfilePicture', 'Signature', 'Banned', 'CreationDate'])
-            .from('User')
-            .where('Id', '=', data.userId);
+        const [user] = await database
+            .select('*')
+            .from(database.raw('"UserJson"(?)', [data.userName]));
 
-        if (users.length === 0) {
+        if (!user) {
             throw new Error('Utilisateur introuvable');
         }
 
-        return users[0];
+        return user.UserJson;
     }
 
     static async updateUser(data) {

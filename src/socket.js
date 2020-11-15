@@ -1,47 +1,72 @@
 const server = require('http').createServer();
-
 const io = require('socket.io')(server);
+
+const database = require('./database.js');
+const validateJwt = require('./helpers/validateJwt.js');
 
 const forums = {};
 const topics = {};
 
 io.on('connection', (socket) => {
     const ip = socket.handshake.headers['x-forwarded-for'] || socket.request.connection.remoteAddress;
+    const user = {};
     let forumId = null;
     let topicKey = null;
 
-    socket.on('get-users-count', (data, callback) => {
+    socket.on('get-users-count', async (data, callback) => {
         if (typeof data.forumId !== 'number') {
             return;
         }
         forumId = data.forumId;
 
-        if (!Array.isArray(forums[forumId])) {
-            forums[forumId] = [];
+        if (typeof data.jwt === 'string') {
+            const { userId, userName } = await validateJwt(data.jwt);
+            const users = await database.select('ProfilePicture').from('User').where('Id', '=', userId);
+            if (users.length === 0) {
+                return;
+            }
+            user.userId = userId;
+            user.userName = userName;
+            user.profilePicture = users[0].ProfilePicture;
         }
 
-        if (!forums[forumId].includes(ip)) {
-            forums[forumId].push(ip);
+        if (!Object.prototype.hasOwnProperty.call(forums, forumId)) {
+            forums[forumId] = {};
         }
 
-        if (typeof data.hidden === 'boolean' && typeof data.topicId === 'number') {
+        if (!Object.prototype.hasOwnProperty.call(forums[forumId], ip)) {
+            forums[forumId][ip] = user;
+        }
+
+        if (typeof data.topicId === 'number' && typeof data.hidden === 'boolean') {
             topicKey = `${forumId}-${data.hidden ? 1 : 0}-${data.topicId}`;
 
-            if (!Array.isArray(topics[topicKey])) {
-                topics[topicKey] = [];
+            if (!Object.prototype.hasOwnProperty.call(topics, topicKey)) {
+                topics[topicKey] = {};
             }
 
-            if (!topics[topicKey].includes(ip)) {
-                topics[topicKey].push(ip);
+            if (!Object.prototype.hasOwnProperty.call(topics[topicKey], ip)) {
+                topics[topicKey][ip] = user;
             }
+        }
+
+        const forumUsers = [];
+        for (const ip in forums[forumId]) {
+            forumUsers.push(forums[forumId][ip]);
         }
 
         const result = {
-            forumCount: forums[forumId].length
+            forumCount: Object.keys(forums[forumId]).length,
+            forumUsers
         };
 
         if (topicKey !== null) {
-            result.topicCount = topics[topicKey].length;
+            const topicUsers = [];
+            for (const ip in topics[topicKey]) {
+                topicUsers.push(topics[topicKey][ip]);
+            }
+            result.topicCount = Object.keys(topics[topicKey]).length;
+            result.topicUsers = topicUsers;
         }
 
         callback(result);
@@ -52,16 +77,16 @@ io.on('connection', (socket) => {
             return;
         }
 
-        if (Array.isArray(forums[forumId])) {
-            forums[forumId] = forums[forumId].filter((item) => item !== ip);
-            if (forums[forumId].length === 0) {
+        if (Object.prototype.hasOwnProperty.call(forums, forumId) && Object.prototype.hasOwnProperty.call(forums[forumId], ip)) {
+            delete forums[forumId][ip];
+            if (Object.keys(forums[forumId]).length === 0) {
                 delete forums[forumId];
             }
         }
 
-        if (topicKey !== null && Array.isArray(topics[topicKey])) {
-            topics[topicKey] = topics[topicKey].filter((item) => item !== ip);
-            if (topics[topicKey].length === 0) {
+        if (Object.prototype.hasOwnProperty.call(topics, topicKey) && Object.prototype.hasOwnProperty.call(topics[topicKey], ip)) {
+            delete topics[topicKey][ip];
+            if (Object.keys(topics[topicKey]).length === 0) {
                 delete topics[topicKey];
             }
         }
