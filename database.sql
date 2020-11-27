@@ -2,23 +2,23 @@ SET timezone = 'Europe/Paris';
 
 CREATE TABLE "User" (
     "Id" SERIAL,
-    "Name" CHARACTER VARYING(15) NOT NULL UNIQUE CONSTRAINT "User_Name_Min_Length_Check" CHECK(char_length("Name") >= 3),
-    "Password" CHAR(60) NOT NULL,
+    "Name" CHARACTER VARYING(15) NOT NULL UNIQUE CONSTRAINT "User_Name_Min_Length_Check" CHECK("Name" ~ '^[a-zA-Z0-9\-_\[\]]{3,15}$'),
+    "Password" CHARACTER(60) NOT NULL,
     "IsAdmin" BOOLEAN NOT NULL DEFAULT FALSE,
-    "Banned" BOOLEAN DEFAULT FALSE,
-
+    "Banned" BOOLEAN NOT NULL DEFAULT FALSE,
     "Email" CHARACTER VARYING(50) NULL,
     "ProfilePicture" CHARACTER VARYING(200) NULL,
     "Signature" CHARACTER VARYING(400) NULL,
-
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
 
     PRIMARY KEY ("Id")
 );
 
+CREATE UNIQUE INDEX "User_UniqueLowerName_Index" ON "User"(lower("Name"));
+
 CREATE TABLE "Badge" (
     "Id" SERIAL,
-    "Name" CHARACTER VARYING(50),
+    "Name" CHARACTER VARYING(50) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
 
     PRIMARY KEY ("Id")
@@ -95,6 +95,8 @@ CREATE TABLE "JVCTopic" (
     FOREIGN KEY ("JVCForumId") REFERENCES "JVCForum" ("Id") ON DELETE CASCADE
 );
 
+CREATE INDEX "JVCTopic_LowerTitle_Index" ON "JVCTopic"(lower("Title"));
+
 CREATE TABLE "JVCPost" (
     "Id" SERIAL,
     "Content" CHARACTER VARYING(16000) NOT NULL,
@@ -103,8 +105,8 @@ CREATE TABLE "JVCPost" (
     "Page" INTEGER NOT NULL, -- the page on which the post was created, might not be accurate if some actual jvc posts are removed
     "Ip" INET NULL,
 
-    "UserId" INTEGER NULL, -- logged in user
-    "Username" CHARACTER VARYING(15) NULL, -- anonymous user
+    "UserId" INTEGER NULL,
+    "Username" CHARACTER VARYING(15) NULL,
 
     "JVCTopicId" INTEGER NOT NULL,
 
@@ -129,6 +131,8 @@ CREATE TABLE "HiddenTopic" (
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE SET NULL,
     FOREIGN KEY ("JVCForumId") REFERENCES "JVCForum" ("Id") ON DELETE CASCADE
 );
+
+CREATE INDEX "HiddenTopic_LowerTitle_Index" ON "HiddenTopic"(lower("Title"));
 
 CREATE TABLE "HiddenTag" (
     "Id" SERIAL,
@@ -164,6 +168,8 @@ CREATE TABLE "HiddenPost" (
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE SET NULL,
     FOREIGN KEY ("HiddenTopicId") REFERENCES "HiddenTopic" ("Id") ON DELETE CASCADE
 );
+
+CREATE INDEX "HiddenPost_TopicId_Index" ON "HiddenPost" ("HiddenTopicId");
 
 CREATE TABLE "Survey" (
     "Id" SERIAL,
@@ -206,9 +212,6 @@ CREATE TABLE "BannedIp" (
 
     PRIMARY KEY ("Ip")
 );
-
-CREATE INDEX "HiddenPost_TopicId_Index" ON "HiddenPost" ("HiddenTopicId");
-CREATE INDEX "HiddenTopic_LowerTitle_Index" ON "HiddenTopic"(lower("Title"));
 
 CREATE OR REPLACE FUNCTION "UserJson" (
     IN "_UserName" VARCHAR
