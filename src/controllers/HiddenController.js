@@ -639,7 +639,6 @@ module.exports = class HiddenController {
     }
 
     static async checkPostCooldown(ip, userId) {
-        return true;
         const lastPost = await this.getLastPostFromIp(ip);
         if (lastPost === null) {
             return true;
