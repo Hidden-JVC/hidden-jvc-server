@@ -2,11 +2,11 @@ const router = require('express').Router();
 
 const HiddenController = require('../../controllers/HiddenController.js');
 
-// /hidden/topics
+// /hidden/topics - topic list
 router.get('/', async (req, res, next) => {
     try {
         let { forumId, page, startDate, endDate, pinned, search, searchType } = req.query;
-        const data = { page, forumId, startDate, endDate, pinned, search, searchType };
+        const data = { forumId, page, startDate, endDate, pinned, search, searchType };
 
         const { topics, count } = await HiddenController.getTopics(data);
         res.json({ topics, count });
@@ -15,12 +15,12 @@ router.get('/', async (req, res, next) => {
     }
 });
 
-// /hidden/topics
+// /hidden/topics - topic creation
 router.post('/', async (req, res, next) => {
     try {
         const { userId, ip } = res.locals;
-        const { title, content, username, forumId, forumName } = req.body;
-        const data = { title, content, username, forumId, forumName, userId, ip };
+        const { title, tags, content, username, forumId, forumName } = req.body;
+        const data = { title, tags, content, username, forumId, forumName, userId, ip };
 
         const { topicId } = await HiddenController.createTopic(data);
         res.json({ topicId });
@@ -29,11 +29,11 @@ router.post('/', async (req, res, next) => {
     }
 });
 
-// /hidden/topics/:topicId
+// /hidden/topics/:topicId - get single topic
 router.get('/:topicId', async (req, res, next) => {
     try {
         const { topicId } = req.params;
-        let { userId, page } = req.query;
+        const { userId, page } = req.query;
         const data = { topicId, userId, page };
 
         const { topic } = await HiddenController.getTopic(data);
@@ -43,8 +43,23 @@ router.get('/:topicId', async (req, res, next) => {
     }
 });
 
-// /hidden/topics/:topicId
+// /hidden/topics/:topicId - update topic
 router.post('/:topicId', async (req, res, next) => {
+    try {
+        const { topicId } = req.params;
+        const { userId } = res.locals;
+        const { title, tags } = req.body;
+        const data = { topicId: parseInt(topicId), userId, title, tags };
+
+        await HiddenController.updateTopic(data);
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// /hidden/topics/:topicId/posts - create post
+router.post('/:topicId/posts', async (req, res, next) => {
     try {
         const { userId, ip } = res.locals;
         const { topicId } = req.params;
@@ -58,8 +73,8 @@ router.post('/:topicId', async (req, res, next) => {
     }
 });
 
-// /hidden/topics/:topicId/:postId
-router.post('/:topicId/:postId', async (req, res, next) => {
+// /hidden/topics/:topicId/posts/:postId - update posts
+router.post('/:topicId/posts/:postId', async (req, res, next) => {
     try {
         const { userId, ip } = res.locals;
         const { postId } = req.params;

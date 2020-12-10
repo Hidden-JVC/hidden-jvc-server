@@ -51,7 +51,7 @@ CREATE TABLE "JVCForum" (
 );
 
 CREATE TYPE "ModerationAction" AS ENUM (
-    'Delete',
+    'Delete', 'ModifyTag',
     'Pin', 'UnPin',
     'Lock', 'UnLock',
     'BanIp', 'UnBanIp',
@@ -134,9 +134,10 @@ CREATE TABLE "HiddenTopic" (
 
 CREATE INDEX "HiddenTopic_LowerTitle_Index" ON "HiddenTopic"(lower("Title"));
 
-CREATE TABLE "HiddenTag" (
+CREATE TABLE "TopicTag" (
     "Id" SERIAL,
     "Name" CHARACTER VARYING(100) NOT NULL,
+    "Color" CHARACTER VARYING(15) NULL,
 
     PRIMARY KEY ("Id")
 );
@@ -144,10 +145,11 @@ CREATE TABLE "HiddenTag" (
 CREATE TABLE "HiddenTopicTag" (
     "TopicId" INTEGER NOT NULL,
     "TagId" INTEGER NOT NULL,
+    "Locked" BOOLEAN NOT NULL DEFAULT FALSE,
 
     PRIMARY KEY ("TopicId", "TagId"),
-    FOREIGN KEY ("TopicId") REFERENCES "HiddenTopic" ("Id"),
-    FOREIGN KEY ("TagId") REFERENCES "HiddenTag" ("Id")
+    FOREIGN KEY ("TopicId") REFERENCES "HiddenTopic" ("Id") ON DELETE CASCADE,
+    FOREIGN KEY ("TagId") REFERENCES "TopicTag" ("Id") ON DELETE CASCADE
 );
 
 CREATE TABLE "HiddenPost" (
@@ -228,7 +230,7 @@ $BODY$
                 'ProfilePicture', "User"."ProfilePicture",
                 'Signature', "User"."Signature"
             ),
-            'Badges',CASE WHEN MIN("Badge"."Id") IS NULL THEN '[]'::json ELSE
+            'Badges',CASE WHEN MIN("Badge"."Id") IS NULL THEN '[]'::JSON ELSE
                 json_agg(
                     json_build_object(
                         'Id', "Badge"."Id",
@@ -324,7 +326,10 @@ $BODY$
                     'Id', "User"."Id",
                     'Name', "User"."Name"
                 )
-            ) ELSE '[]'::json END
+            ) ELSE '[]'::json END,
+            'Tags', (
+                SELECT json_agg(json_build_object('Id', "Id", 'Name', "Name", 'Color', "Color")) FROM "TopicTag"
+            )
         )
         FROM "JVCForum"
         LEFT JOIN "Moderator"
@@ -435,13 +440,13 @@ $BODY$
 					'IsModerator', "AuthorModerator"."UserId" IS NOT NULL
 				)
 			END,
-			'Tags', (
-                SELECT array_agg("Name")
-                FROM "HiddenTag"
+			'Tags', COALESCE((
+                SELECT json_agg(json_build_object('Id', "Id", 'Name', "Name", 'Color', "Color", 'Locked', "Locked"))
+                FROM "TopicTag"
                 JOIN "HiddenTopicTag"
-                ON "HiddenTag"."Id" = "HiddenTopicTag"."TagId"
+                ON "TopicTag"."Id" = "HiddenTopicTag"."TagId"
                 AND "HiddenTopicTag"."TopicId" = "HiddenTopic"."Id"
-            ),
+            ), '[]'::JSON),
 			'PostsCount', (
                 SELECT COUNT(*)
                 FROM "HiddenPost"
@@ -464,6 +469,9 @@ $BODY$
         AND ("_Pinned" IS NULL OR "HiddenTopic"."Pinned" = "_Pinned")
         AND ("_Search" IS NULL OR "_SearchType" <> 'Title' OR lower("HiddenTopic"."Title") LIKE concat('%', lower("_Search"), '%'))
         AND ("_Search" IS NULL OR "_SearchType" <> 'Author' OR lower("TopicAuthor"."Name") LIKE concat('%', lower("_Search"), '%'))
+        AND ("_Search" IS NULL OR "_SearchType" <> 'Tags' OR "HiddenTopic"."Id" IN
+            (SELECT "TopicId" FROM "HiddenTopicTag" GROUP BY "TopicId" HAVING array_agg("TagId") @>  string_to_array("_Search", ',')::INTEGER[])
+        )
         ORDER BY "HiddenTopic"."Pinned" DESC, "LastHiddenPost"."CreationDate" DESC
         OFFSET "_Offset"
         LIMIT "_Limit";
@@ -487,6 +495,13 @@ $BODY$
                     'Name', "User"."Name"
                 )
                 END,
+            'Tags', COALESCE((
+                SELECT json_agg(json_build_object('Id', "Id", 'Name', "Name", 'Color', "Color", 'Locked', "Locked"))
+                FROM "TopicTag"
+                JOIN "HiddenTopicTag"
+                ON "TopicTag"."Id" = "HiddenTopicTag"."TagId"
+                AND "HiddenTopicTag"."TopicId" = "HiddenTopic"."Id"
+            ), '[]'::JSON),
             'Posts', json_agg(
                 json_build_object(
                     'Post', json_build_object(
@@ -547,6 +562,7 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
+INSERT INTO "TopicTag" ("Name", "Color") VALUES ('Porn', 'pink lighten-3'), ('Gore', 'black'), ('Politique', 'blue darken-2'), ('Fic', 'orange darken-1'), ('Boucle', 'red ')
 
 SELECT
 	(SELECT COUNT(*) FROM "HiddenTopic") AS "HiddenTopicCount",
