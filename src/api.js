@@ -11,10 +11,22 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+const getDurationInMilliseconds = (start) => {
+    const NS_PER_SEC = 1e9;
+    const NS_TO_MS = 1e6;
+    const diff = process.hrtime(start);
+
+    return (diff[0] * NS_PER_SEC + diff[1]) / NS_TO_MS;
+};
+
 app.use(authenticate);
+
+app.set('trust proxy', 'loopback');
 
 // logs every requests
 app.use(function (req, res, next) {
+    const start = process.hrtime();
+
     let message = `${req.method} - ${req.originalUrl}`;
     const { userName } = res.locals;
     if (userName) {
@@ -23,9 +35,17 @@ app.use(function (req, res, next) {
     if (req.method === 'POST') {
         message = `${message} - ${JSON.stringify(req.body)}`;
     }
-    accessLogger.info(message);
 
     res.locals.debug = req.query.debug === '1';
+    res.locals.ip = req.ip;
+
+    message = `${message} - ${res.locals.ip}`;
+
+    res.on('finish', () => {
+        const duration = getDurationInMilliseconds(start);
+        message = `${message} - ${duration.toLocaleString()} ms`;
+        accessLogger.info(message);
+    });
 
     next();
 });

@@ -6,7 +6,7 @@ const format = winston.format.combine(
     winston.format.timestamp({
         format: 'YYYY-MM-DD HH:mm:ss'
     }),
-    winston.format.printf((info) => `${info.timestamp} - ${info.level} - ${info.message}`)
+    winston.format.printf((info) => `${info.timestamp} - ${info.message}`)
 );
 
 const logger = winston.createLogger({
@@ -26,18 +26,9 @@ const accessLogger = winston.createLogger({
     ]
 });
 
-const sqlLogger = winston.createLogger({
-    level: 'info',
-    format,
-    transports: [
-        new winston.transports.File({ filename: './logs/sql.log', level: 'info' })
-    ]
-});
-
 if (!isProduction) {
     logger.add(new winston.transports.Console({ format }));
     accessLogger.add(new winston.transports.Console({ format }));
-    sqlLogger.add(new winston.transports.Console({ format }));
 }
 
-module.exports = { logger, accessLogger, sqlLogger };
+module.exports = { logger, accessLogger };

@@ -5,8 +5,8 @@ const HiddenController = require('../../controllers/HiddenController.js');
 // /hidden/topics
 router.get('/', async (req, res, next) => {
     try {
-        let { forumId, page, startDate, endDate, pinned } = req.query;
-        const data = { page, forumId, startDate, endDate, pinned };
+        let { forumId, page, startDate, endDate, pinned, search, searchType } = req.query;
+        const data = { page, forumId, startDate, endDate, pinned, search, searchType };
 
         const { topics, count } = await HiddenController.getTopics(data);
         res.json({ topics, count });
@@ -18,9 +18,9 @@ router.get('/', async (req, res, next) => {
 // /hidden/topics
 router.post('/', async (req, res, next) => {
     try {
-        const { userId } = res.locals;
+        const { userId, ip } = res.locals;
         const { title, content, username, forumId, forumName } = req.body;
-        const data = { title, content, username, forumId, forumName, userId };
+        const data = { title, content, username, forumId, forumName, userId, ip };
 
         const { topicId } = await HiddenController.createTopic(data);
         res.json({ topicId });
@@ -46,10 +46,10 @@ router.get('/:topicId', async (req, res, next) => {
 // /hidden/topics/:topicId
 router.post('/:topicId', async (req, res, next) => {
     try {
-        const { userId } = res.locals;
+        const { userId, ip } = res.locals;
         const { topicId } = req.params;
         const { content, username } = req.body;
-        const data = { userId, topicId, content, username };
+        const data = { userId, topicId, content, username, ip };
 
         const { postId } = await HiddenController.createPost(data);
         res.json({ postId });
@@ -61,10 +61,10 @@ router.post('/:topicId', async (req, res, next) => {
 // /hidden/topics/:topicId/:postId
 router.post('/:topicId/:postId', async (req, res, next) => {
     try {
-        const { userId } = res.locals;
+        const { userId, ip } = res.locals;
         const { postId } = req.params;
         const { content, pinned } = req.body;
-        const data = { userId, postId: parseInt(postId), content, pinned };
+        const data = { userId, postId: parseInt(postId), content, pinned, ip };
         if (typeof content === 'string') {
             await HiddenController.updatePostContent(data);
         } else if (typeof pinned === 'boolean') {

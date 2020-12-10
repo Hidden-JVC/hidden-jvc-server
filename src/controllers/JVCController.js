@@ -9,14 +9,13 @@ module.exports = class JVCController {
 
         const forums = await database
             .select('*')
-            .from('JVCForum')
-            .where('Id', '=', data.forumId);
+            .from(database.raw('"JVCForumJson"(?)', data.forumId));
 
         if (forums.length === 0) {
             throw new Error('Ce forum n\'existe pas');
         }
 
-        return forums[0];
+        return forums[0].JVCForumJson;
     }
 
     static async getTopics(data) {
@@ -108,9 +107,63 @@ module.exports = class JVCController {
         return topic;
     }
 
+    static async hasUserRightOnJVCTopics(userId, action, topicIds) {
+        for (const topicId of topicIds) {
+            const [topic] = await database.select('*').from('HiddenJVC').where('Id', '=', topicId);
+
+            if (!topic) {
+                return false;
+            }
+
+            const [moderator] = await database
+                .select('*').from('Moderator')
+                .where('UserId', '=', userId)
+                .where('ForumId', '=', topic.JVCForumId)
+                .where(database.raw('? = ANY("Actions")', [action]));
+
+            if (!moderator) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     static async postModeration(action, ids, userId) {
+        if (!Array.isArray(ids)) {
+            throw new Error('ids must be an array');
+        }
+
+        const [user] = await database
+            .select('*')
+            .from('User')
+            .where('Id', '=', userId);
+
+        let allowed = user.IsAdmin;
+
+        let posts = null;
+        if (!allowed) {
+            posts = await database
+                .select('*')
+                .from('HiddenPost')
+                .whereIn('Id', ids);
+
+            const topicIds = posts.map((post) => post.HiddenTopicId);
+
+            allowed = await this.hasUserRightOnJVCTopics(userId, action, topicIds);
+        }
+
+        // regular users can delete their own posts
+        if (!allowed && action === 'Delete') {
+            allowed = posts.every((post) => post.UserId !== null && post.UserId === userId);
+        }
+
+        if (!allowed) {
+            throw new Error('not allowed');
+        }
+
         switch (action) {
-            case 'DeletePost':
+            case 'Delete':
                 await this.deletePost(ids, action, userId);
                 break;
             default:

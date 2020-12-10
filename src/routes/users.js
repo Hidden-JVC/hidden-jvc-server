@@ -1,44 +1,16 @@
-const bcrypt = require('bcrypt');
 const router = require('express').Router();
 
-const database = require('../database.js');
-const { createJWT } = require('../helpers');
+const { authRequired } = require('../middlewares');
+const UserController = require('../controllers/UserController.js');
 
 // /users/register
 router.post('/register', async (req, res, next) => {
     try {
         const { name, password } = req.body;
-        if (typeof name !== 'string' || typeof password !== 'string') {
-            return next(new Error('you must provide both a name and a password'));
-        }
+        const data = { name, password };
+        const { jwt, userId, isAdmin, moderators } = await UserController.register(data);
 
-        const [existingUser] = await database
-            .select('*')
-            .from('User')
-            .where('Name', '=', name);
-
-        if (existingUser) {
-            throw new Error('Ce pseudo est déjà pris');
-        }
-
-        const hash = await bcrypt.hash(password, 10);
-
-        const values = {
-            Name: name,
-            Password: hash
-        };
-
-        const [userId] = await database
-            .insert(values, 'Id')
-            .into('User');
-
-        const [sessionId] = await database
-            .insert({ UserId: userId }, 'Id')
-            .into('Session');
-
-        const jwt = await createJWT(userId, name, sessionId);
-
-        res.json({ jwt, userId, isAdmin: false, moderators: [] });
+        res.json({ jwt, userId, isAdmin, moderators });
     } catch (err) {
         next(err);
     }
@@ -48,41 +20,61 @@ router.post('/register', async (req, res, next) => {
 router.post('/login', async (req, res, next) => {
     try {
         const { name, password } = req.body;
-        if (typeof name !== 'string' || typeof password !== 'string') {
-            return next(new Error('you must provide both a name and a password'));
-        }
+        const data = { name, password };
+        const { jwt, userId, isAdmin, moderators } = await UserController.login(data);
 
-        const [user] = await database
-            .select(['Id', 'Name', 'Password', 'IsAdmin'])
-            .from('User')
-            .where('Name', '=', name);
+        res.json({ jwt, userId, isAdmin, moderators });
+    } catch (err) {
+        next(err);
+    }
+});
 
-        if (!user) {
-            return next(new Error('invalid name or password'));
-        }
+// /users/moderation
+router.post('/moderation', authRequired, async (req, res, next) => {
+    try {
+        const { userId: connectedUserId } = res.locals;
+        const { action, userId } = req.body;
+        const data = { connectedUserId, action, userId };
+        await UserController.moderation(data);
 
-        const match = await bcrypt.compare(password, user.Password);
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+});
 
-        if (!match) {
-            return next(new Error('invalid name or password'));
-        }
+// /users
+router.get('/', async (req, res, next) => {
+    try {
+        res.json({ users: [] });
+    } catch (err) {
+        next(err);
+    }
+});
 
-        await database('Session')
-            .where('UserId', '=', user.Id)
-            .del();
+// /users/:userName
+router.get('/:userName', async (req, res, next) => {
+    try {
+        const { userName } = req.params;
+        const data = { userName };
+        const user = await UserController.getUser(data);
 
-        const [sessionId] = await database
-            .insert({ UserId: user.Id }, 'Id')
-            .into('Session');
+        res.json({ user });
+    } catch (err) {
+        next(err);
+    }
+});
 
-        const moderators = await database
-            .select(['ForumId', database.raw('array_to_json("Actions") AS "Actions"')])
-            .from('Moderator')
-            .where('UserId', '=', user.Id);
+// /users/:userId
+router.post('/:userId', authRequired, async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+        const { userId: connectedUserId } = res.locals;
+        const { email, signature, profilePicture } = req.body;
+        const data = { userId: parseInt(userId), email, signature, profilePicture, connectedUserId };
+        await UserController.updateUser(data);
 
-        const jwt = await createJWT(user.Id, user.Name, sessionId);
-
-        res.json({ jwt, userId: user.Id, isAdmin: user.IsAdmin, moderators });
+        res.json({ success: true });
     } catch (err) {
         next(err);
     }
