@@ -74,6 +74,10 @@ module.exports = class HiddenController {
             throw new Error('data.content est requis');
         }
 
+        if (!Array.isArray(data.tags)) {
+            throw new Error('data.tags est requis');
+        }
+
         if (typeof data.forumId !== 'number') {
             throw new Error('data.forumId est requis');
         }
@@ -124,7 +128,88 @@ module.exports = class HiddenController {
             .insert(postData, 'Id')
             .into('HiddenPost');
 
+        for (const tagId of data.tags) {
+            await database
+                .insert({ TopicId: topicId, TagId: tagId })
+                .into('HiddenTopicTag');
+        }
+
         return { topicId, postId };
+    }
+
+    static async updateTopic(data) {
+        if (typeof data !== 'object') {
+            throw new Error('data est requis');
+        }
+
+        if (typeof data.topicId !== 'number' || isNaN(data.topicId)) {
+            throw new Error('topicId est requis');
+        }
+
+        if (typeof data.userId !== 'number' || isNaN(data.userId)) {
+            throw new Error('userId est requis');
+        }
+
+        const [topic] = await database.select('*').from('HiddenTopic').where('Id', '=', data.topicId);
+        if (!topic) {
+            throw new Error('Ce topic n\'existe pas');
+        }
+
+        // update title
+        if (typeof data.title === 'string') {
+            if (data.userId !== topic.UserId) {
+                throw new Error('Vous n\'êtes pas l\'auteur du topic');
+            }
+
+            const seconds = differenceInSeconds(new Date(), new Date(topic.CreationDate));
+            if (seconds > 60) {
+                throw new Error('Vous ne pouvez pas modifier le titre d\'un topic après une minute');
+            }
+
+            await database('HiddenTopic')
+                .update({ Title: data.title })
+                .where('Id', '=', data.topicId);
+        }
+
+        if (Array.isArray(data.tags)) {
+            const [user] = await database
+                .select('*')
+                .from('User')
+                .where('Id', '=', data.userId);
+
+            if (!user) {
+                throw new Error('utilisateur introuvable');
+            }
+
+            let allowed = user.IsAdmin;
+            let isAdminOrModerator = true;
+
+            if (!allowed) {
+                allowed = await this.hasUserRightOnHiddenTopics(data.userId, 'ModifyTag', [data.topicId]);
+            }
+            if (!allowed) {
+                allowed = data.userId === topic.UserId;
+                isAdminOrModerator = false;
+            }
+
+            if (!allowed) {
+                throw new Error('Vous n\'avez pas l\'autorisation de modifier les tags de ce topic');
+            }
+
+            await database('HiddenTopicTag').del().where('TopicId', '=', data.topicId);
+            for (const tag of data.tags) {
+                if (typeof tag.id !== 'number' || isNaN(tag.id)) {
+                    continue;
+                }
+                if (typeof tag.locked !== 'boolean') {
+                    tag.locked = false;
+                }
+
+                await database
+                    .insert({ TopicId: data.topicId, TagId: tag.id, Locked: isAdminOrModerator })
+                    .into('HiddenTopicTag');
+            }
+        }
     }
 
     static async topicExists(topicId) {
