@@ -63,7 +63,7 @@ module.exports = class HiddenController {
 
     static async register(data) {
         if (typeof data.name !== 'string' || typeof data.password !== 'string') {
-            throw new Error('you must provide both a name and a password');
+            throw new Error('Vous devez renseigner à la fois un pseudo et un mot de passe');
         }
 
         const [existingUser] = await database
@@ -97,7 +97,7 @@ module.exports = class HiddenController {
 
     static async login(data) {
         if (typeof data.name !== 'string' || typeof data.password !== 'string') {
-            throw new Error('you must provide both a name and a password');
+            throw new Error('Vous devez renseigner à la fois un pseudo et un mot de passe');
         }
 
         const [user] = await database
@@ -106,13 +106,13 @@ module.exports = class HiddenController {
             .where('Name', '=', data.name);
 
         if (!user) {
-            throw new Error('invalid name or password');
+            throw new Error('Pseudo ou mot de passe incorect');
         }
 
         const match = await bcrypt.compare(data.password, user.Password);
 
         if (!match) {
-            throw new Error('invalid name or password');
+            throw new Error('Pseudo ou mot de passe incorect');
         }
 
         await database('Session')
@@ -156,7 +156,7 @@ module.exports = class HiddenController {
         }
 
         if (!allowed) {
-            throw new Error('not allowed');
+            throw new Error('Vous n\'avez pas les droits suffisant pour effectuer cette action');
         }
 
         switch (data.action) {

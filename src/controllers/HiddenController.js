@@ -100,15 +100,15 @@ module.exports = class HiddenController {
             topicData.Username = data.username;
             postData.Username = data.username;
         } else {
-            throw new Error('Vous devez être connecté ou renseigné le champ post.username');
+            throw new Error('Vous devez être connecté ou renseigner le champ post.username');
         }
 
         if ((await this.isIpBanned(data.ip))) {
-            throw new Error('ban');
+            throw new Error('Vous êtes ban ip');
         }
 
         if (!(await this.checkPostCooldown(data.ip, data.userId))) {
-            throw new Error('cooldown');
+            throw new Error('Vous devez attendre avant de pouvoir créer un nouveau topic');
         }
 
         if (!(await ForumController.exists(data.forumId))) {
@@ -178,7 +178,7 @@ module.exports = class HiddenController {
                 .where('Id', '=', data.userId);
 
             if (!user) {
-                throw new Error('utilisateur introuvable');
+                throw new Error('Utilisateur introuvable');
             }
 
             let allowed = user.IsAdmin;
@@ -241,15 +241,15 @@ module.exports = class HiddenController {
         } else if (typeof data.username === 'string' && data.username.length >= 3) {
             postData.Username = data.username;
         } else {
-            throw new Error('Vous devez être connecté ou renseigné le champ data.username');
+            throw new Error('Vous devez être connecté ou renseigner le champ data.username');
         }
 
         if ((await this.isIpBanned(data.ip))) {
-            throw new Error('ban');
+            throw new Error('Vous êtes ban ip');
         }
 
         if (!(await this.checkPostCooldown(data.ip, data.userId))) {
-            throw new Error('cooldown');
+            throw new Error('Vous devez attendre avant de pouvoir poster à nouveau');
         }
 
         const [topic] = await database
@@ -258,7 +258,7 @@ module.exports = class HiddenController {
             .where('Id', '=', data.topicId);
 
         if (!topic) {
-            throw new Error(`Le topic avec l'id: ${data.topicId} est introuvable`);
+            throw new Error('Le topic est introuvable');
         }
 
         if (topic.Locked) {
@@ -304,7 +304,7 @@ module.exports = class HiddenController {
         }
 
         if ((await this.isIpBanned(data.ip))) {
-            throw new Error('ban');
+            throw new Error('Vous êtes ban ip');
         }
 
         const [post] = await database
@@ -353,7 +353,7 @@ module.exports = class HiddenController {
             .where('Id', '=', userId);
 
         if (!user) {
-            throw new Error('utilisateur non existant');
+            throw new Error('Utilisateur non existant');
         }
 
         let allowed = user.IsAdmin;
@@ -376,7 +376,7 @@ module.exports = class HiddenController {
         }
 
         if (!allowed) {
-            throw new Error('not allowed');
+            throw new Error('Vous n\'avez pas les droits suffisant pour effectuer cette action');
         }
 
         switch (action) {
@@ -396,7 +396,7 @@ module.exports = class HiddenController {
                 await this.unBanIp(ids, action, userId);
                 break;
             default:
-                throw new Error('unknown action');
+                throw new Error('Action inconnue');
         }
     }
 
@@ -488,7 +488,7 @@ module.exports = class HiddenController {
 
     static async topicModeration(action, ids, userId) {
         if (!Array.isArray(ids)) {
-            throw new Error('ids must be an array');
+            throw new Error('ids doit être un tableau');
         }
 
         const [user] = await database
@@ -503,7 +503,7 @@ module.exports = class HiddenController {
         }
 
         if (!allowed) {
-            throw new Error('not allowed');
+            throw new Error('Vous n\'avez pas les droits suffisant pour effectuer cette action');
         }
 
         switch (action) {
@@ -528,7 +528,7 @@ module.exports = class HiddenController {
                 break;
 
             default:
-                throw new Error('unknown action');
+                throw new Error('Action inconnue');
         }
     }
 
@@ -686,12 +686,12 @@ module.exports = class HiddenController {
         }
 
         if ((await this.isIpBanned(data.ip))) {
-            throw new Error('ban');
+            throw new Error('Vous êtes ban ip');
         }
 
-        if (!(await this.checkPostCooldown(data.ip, data.userId))) {
-            throw new Error('cooldown');
-        }
+        // if (!(await this.checkPostCooldown(data.ip, data.userId))) {
+        //     throw new Error('Vous devez attendre avant de pouvoir modifier votre message');
+        // }
 
         const [post] = await database
             .select('*')
@@ -699,11 +699,11 @@ module.exports = class HiddenController {
             .where('Id', '=', data.postId);
 
         if (!post) {
-            throw new Error('post not found');
+            throw new Error('Message introuvable');
         }
 
         if (post.UserId === null || post.UserId !== data.userId) {
-            throw new Error('you can\'t update this post');
+            throw new Error('Vous n\'êtes pas l\'auteur de ce message');
         }
 
         await database('HiddenPost')
