@@ -31,6 +31,8 @@ app.use(function (req, res, next) {
     const { userName } = res.locals;
     if (userName) {
         message = `${message} - ${userName}`;
+    } else {
+        message = `${message} - anonymous`;
     }
     if (req.method === 'POST') {
         message = `${message} - ${JSON.stringify(req.body)}`;
@@ -62,9 +64,7 @@ app.use(function (req, res, next) {
 app.use(function (err, req, res, next) { // eslint-disable-line no-unused-vars
     logger.error(err.message);
     logger.error(err.stack);
-    res.status(500).json({
-        error: err.message
-    });
+    res.status(500).json({ error: err.message });
 });
 
 const port = process.env.API_PORT;

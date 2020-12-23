@@ -71,7 +71,7 @@ module.exports = class JVCController {
         } else if (data.username) {
             postData.Username = data.username;
         } else {
-            throw new Error('Vous devez être connecté ou renseigné le champ username');
+            throw new Error('Vous devez être connecté ou renseigner le champ username');
         }
 
         if (!(await ForumController.exists(data.forumId))) {
@@ -131,7 +131,7 @@ module.exports = class JVCController {
 
     static async postModeration(action, ids, userId) {
         if (!Array.isArray(ids)) {
-            throw new Error('ids must be an array');
+            throw new Error('ids doit être un tableau');
         }
 
         const [user] = await database
@@ -159,7 +159,7 @@ module.exports = class JVCController {
         }
 
         if (!allowed) {
-            throw new Error('not allowed');
+            throw new Error('Vous n\'avez pas les droits suffisant pour effectuer cette action');
         }
 
         switch (action) {
@@ -167,7 +167,7 @@ module.exports = class JVCController {
                 await this.deletePost(ids, action, userId);
                 break;
             default:
-                throw new Error('unknown action');
+                throw new Error('Action inconnue');
         }
     }
 
@@ -206,11 +206,11 @@ module.exports = class JVCController {
             .where('Id', '=', data.postId);
 
         if (!post) {
-            throw new Error('post not found');
+            throw new Error('Ce message est introuvable');
         }
 
         if (post.UserId === null || post.UserId !== data.userId) {
-            throw new Error('you can\'t update this post');
+            throw new Error('Vous n\'êtes pas l\'auteur de ce topic');
         }
 
         await database('JVCPost')
@@ -229,7 +229,7 @@ module.exports = class JVCController {
             .where('Id', '=', data.jvcTopicId);
 
         if (!jvcTopic) {
-            throw new Error('topic introuvable');
+            throw new Error('Topic introuvable');
         }
 
         const jvcPosts = await database
