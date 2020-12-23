@@ -53,6 +53,13 @@ module.exports = class HiddenController {
             if (data.profilePicture === '') {
                 data.profilePicture = null;
             }
+
+            if (data.profilePicture !== null) {
+                if (!data.profilePicture.startsWith('https://www.noelshack.com/') && !data.profilePicture.startsWith('https://image.noelshack.com/')) {
+                    throw new Error('Vous devez saisir un lien noelshack valide');
+                }
+            }
+
             values.ProfilePicture = data.profilePicture;
         }
 
@@ -64,6 +71,14 @@ module.exports = class HiddenController {
     static async register(data) {
         if (typeof data.name !== 'string' || typeof data.password !== 'string') {
             throw new Error('Vous devez renseigner à la fois un pseudo et un mot de passe');
+        }
+
+        if (data.name.length < 3 || data.name.length > 15) {
+            throw new Error('Le pseudo doit être compris entre 3 et 15 caractères');
+        }
+
+        if (data.password.length < 3) {
+            throw new Error('Le mot de passe doit contenir au moins 3 caractères');
         }
 
         const [existingUser] = await database
