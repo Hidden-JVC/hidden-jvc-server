@@ -1,32 +1,17 @@
 const router = require('express').Router();
 
 const JVCController = require('../../controllers/JVCController.js');
+const { authRequired } = require('../../middlewares');
 
-// List of jvc topics with at least one hidden post
 // /jvc/topics
 router.get('/', async (req, res, next) => {
     try {
         const { topicIds } = req.query;
-        const data = { topicIds };
 
-        const topics = await JVCController.getTopics(data);
+        const topics = await JVCController.getTopics({
+            topicIds
+        });
         res.json({ topics });
-    } catch (err) {
-        next(err);
-    }
-});
-
-// Creation of an hidden jvc post on a real jvc topic
-// /jvc/topics/:topicId
-router.post('/:topicId', async (req, res, next) => {
-    try {
-        const { userId } = res.locals;
-        const { topicId } = req.params;
-        const { forumId, forumName, viewId, content, page, username, topicTitle, topicDate, topicContent, topicAuthor } = req.body;
-        const data = { userId, topicId: parseInt(topicId), forumId, forumName, viewId, content, page, username, topicTitle, topicDate, topicContent, topicAuthor };
-
-        const { postId } = await JVCController.createPost(data);
-        res.json({ postId });
     } catch (err) {
         next(err);
     }
@@ -36,26 +21,30 @@ router.post('/:topicId', async (req, res, next) => {
 router.get('/:topicId', async (req, res, next) => {
     try {
         const { topicId } = req.params;
-        let { startDate, endDate } = req.query;
-        const data = { topicId, startDate, endDate };
+        const { startDate, endDate, debug } = req.query;
 
-        const topic = await JVCController.getTopic(data);
-        res.json({ topic });
+        const { forum, topic, posts, pages, queries } = await JVCController.getTopic({
+            topicId, startDate, endDate, debug
+        });
+        res.json({ forum, topic, posts, pages, queries });
     } catch (err) {
         next(err);
     }
 });
 
-// /jvc/topics/:topicId/:postId
-router.post('/:topicId/:postId', async (req, res, next) => {
+// /jvc/topics/:topicId
+router.post('/:topicId', authRequired, async (req, res, next) => {
     try {
         const { userId } = res.locals;
-        const { postId } = req.params;
-        const { content } = req.body;
-        const data = { userId, postId: parseInt(postId), content };
-        await JVCController.updatePost(data);
+        const { topicId } = req.params;
+        const { forumId, forumName, viewId, content, page, topicTitle, topicDate, topicContent, topicAuthor } = req.body;
 
-        res.json({ success: true });
+        const { postId } = await JVCController.createPost({
+            forumId, forumName, viewId,
+            topicId, topicTitle, topicDate, topicContent, topicAuthor,
+            userId, content, page
+        });
+        res.json({ postId });
     } catch (err) {
         next(err);
     }

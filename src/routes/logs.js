@@ -1,31 +1,58 @@
 const router = require('express').Router();
 
 const database = require('../database.js');
-const { parsePagination } = require('../helpers');
+const { computePagination } = require('../helpers');
 
 // /logs/moderation
 router.get('/moderation', async (req, res, next) => {
     try {
-        let { userId } = req.query;
-        if (userId) {
-            userId = parseInt(userId);
-        } else {
-            userId = null;
-        }
+        let { userId, forumId, jvcTopicId, hiddenTopicId } = req.query;
 
-        const pagination = parsePagination(req.query, 'Json', 1, 20, 'ASC');
+        const { offset, limit } = computePagination(req.query.page, req.query.limit, 20);
 
-        pagination.limit = Math.min(Math.max(pagination.limit, 1), 100);
+        const projection = database.raw(`
+            json_build_object(
+                'ModerationLog', "ModerationLog".*,
+                'User', json_build_object (
+                    'Name', "User"."Name"
+                )
+            ) as json
+        `);
 
         const result = await database
-            .select('*')
-            .from(database.raw('"ModerationLogJson"(?, ?, ?)', [pagination.offset, pagination.limit, userId]));
+            .select(projection)
+            .from('ModerationLog')
+            .innerJoin('User', 'ModerationLog.UserId', '=', 'User.Id')
+            .where(conditions)
+            .orderBy('ModerationLog.Date', 'DESC')
+            .offset(offset)
+            .limit(limit);
 
-        const logs = result.map((row) => row.ModerationLogJson);
+        const logs = result.map((row) => row.json);
 
         const [{ count }] = await database
             .select(database.raw('count(*)::integer'))
-            .from('ModerationLog');
+            .from('ModerationLog')
+            .where(conditions);
+
+        /* eslint-disable-next-line no-inner-declarations */
+        function conditions(query) {
+            if (userId) {
+                query.where('ModerationLog.UserId', '=', userId);
+            }
+
+            if (forumId) {
+                query.where('ModerationLog.ForumId', '=', forumId);
+            }
+
+            if (jvcTopicId) {
+                query.where('ModerationLog.JVCTopicId', '=', jvcTopicId);
+            }
+
+            if (hiddenTopicId) {
+                query.where('ModerationLog.HiddenTopicId', '=', hiddenTopicId);
+            }
+        }
 
         res.json({ logs, count });
     } catch (err) {

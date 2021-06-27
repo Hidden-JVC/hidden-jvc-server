@@ -6,10 +6,12 @@ const JVCController = require('../../controllers/JVCController.js');
 router.get('/:forumId', async (req, res, next) => {
     try {
         const { forumId } = req.params;
-        const data = { forumId: parseInt(forumId) };
+        const { topicIds, startDate, endDate, debug } = req.query;
 
-        const forum = await JVCController.getForum(data);
-        res.json({ forum });
+        const { forum, jvcTopics, pinnedHiddenTopics, inBetweenHiddenTopics, lastHiddenTopics, queries } = await JVCController.getForum({
+            forumId, topicIds, startDate, endDate, debug
+        });
+        res.json({ forum, jvcTopics, pinnedHiddenTopics, inBetweenHiddenTopics, lastHiddenTopics, queries });
     } catch (err) {
         next(err);
     }

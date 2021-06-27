@@ -3,6 +3,18 @@ const router = require('express').Router();
 const { authRequired } = require('../middlewares');
 const UserController = require('../controllers/UserController.js');
 
+// /users
+router.get('/', async (req, res, next) => {
+    try {
+        const { name } = req.query;
+        const data = { name };
+        const { users, count } = await UserController.getUsers(data);
+        res.json({ users, count });
+    } catch (err) {
+        next(err);
+    }
+});
+
 // /users/register
 router.post('/register', async (req, res, next) => {
     try {
@@ -29,6 +41,18 @@ router.post('/login', async (req, res, next) => {
     }
 });
 
+// /users/me
+router.get('/me', authRequired, async (req, res, next) => {
+    try {
+        const { userId } = res.locals;
+        const { user, notifications } = await UserController.me({ userId });
+
+        res.json({ user, notifications });
+    } catch (err) {
+        next(err);
+    }
+});
+
 // /users/moderation
 router.post('/moderation', authRequired, async (req, res, next) => {
     try {
@@ -43,21 +67,13 @@ router.post('/moderation', authRequired, async (req, res, next) => {
     }
 });
 
-// /users
-router.get('/', async (req, res, next) => {
-    try {
-        res.json({ users: [] });
-    } catch (err) {
-        next(err);
-    }
-});
-
 // /users/:userName
 router.get('/:userName', async (req, res, next) => {
     try {
         const { userName } = req.params;
-        const data = { userName };
-        const user = await UserController.getUser(data);
+        const { debug } = req.query;
+        const data = { userName, debug };
+        const { user } = await UserController.getUser(data);
 
         res.json({ user });
     } catch (err) {

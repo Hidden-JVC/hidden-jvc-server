@@ -1,26 +1,28 @@
 const router = require('express').Router();
 
 const HiddenController = require('../../controllers/HiddenController.js');
+const { authRequired } = require('../../middlewares');
 
 // /hidden/topics - topic list
 router.get('/', async (req, res, next) => {
     try {
-        let { forumId, page, startDate, endDate, pinned, search, searchType } = req.query;
-        const data = { forumId, page, startDate, endDate, pinned, search, searchType };
+        let { forumId, page, limit, startDate, endDate, pinned, searchTitle, searchUserId, searchTagIds, debug } = req.query;
 
-        const { topics, count } = await HiddenController.getTopics(data);
-        res.json({ topics, count });
+        const { forum, topics, count } = await HiddenController.getTopics({
+            forumId, page, limit, startDate, endDate, pinned, searchTitle, searchUserId, searchTagIds, debug
+        });
+        res.json({ forum, topics, count });
     } catch (err) {
         next(err);
     }
 });
 
 // /hidden/topics - topic creation
-router.post('/', async (req, res, next) => {
+router.post('/', authRequired, async (req, res, next) => {
     try {
         const { userId, ip } = res.locals;
-        const { title, tags, content, username, forumId, forumName } = req.body;
-        const data = { title, tags, content, username, forumId, forumName, userId, ip };
+        const { title, tags, content, forumId, forumName } = req.body;
+        const data = { title, tags, content, forumId, forumName, userId, ip };
 
         const { topicId } = await HiddenController.createTopic(data);
         res.json({ topicId });
@@ -33,18 +35,18 @@ router.post('/', async (req, res, next) => {
 router.get('/:topicId', async (req, res, next) => {
     try {
         const { topicId } = req.params;
-        const { userId, page } = req.query;
-        const data = { topicId, userId, page };
+        const { userId, page, debug } = req.query;
+        const data = { topicId, userId, page, debug };
 
-        const { topic } = await HiddenController.getTopic(data);
-        res.json({ topic });
+        const { forum, topic, posts, request } = await HiddenController.getTopic(data);
+        res.json({ forum, topic, posts, request });
     } catch (err) {
         next(err);
     }
 });
 
 // /hidden/topics/:topicId - update topic
-router.post('/:topicId', async (req, res, next) => {
+router.post('/:topicId', authRequired, async (req, res, next) => {
     try {
         const { topicId } = req.params;
         const { userId } = res.locals;
@@ -58,23 +60,8 @@ router.post('/:topicId', async (req, res, next) => {
     }
 });
 
-// /hidden/topics/:topicId/posts - create post
-router.post('/:topicId/posts', async (req, res, next) => {
-    try {
-        const { userId, ip } = res.locals;
-        const { topicId } = req.params;
-        const { content, username } = req.body;
-        const data = { userId, topicId, content, username, ip };
-
-        const { postId } = await HiddenController.createPost(data);
-        res.json({ postId });
-    } catch (err) {
-        next(err);
-    }
-});
-
 // /hidden/topics/:topicId/posts/:postId - update posts
-router.post('/:topicId/posts/:postId', async (req, res, next) => {
+router.post('/:topicId/posts/:postId', authRequired, async (req, res, next) => {
     try {
         const { userId, ip } = res.locals;
         const { postId } = req.params;

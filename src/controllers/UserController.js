@@ -4,20 +4,244 @@ const database = require('../database.js');
 const { createJWT } = require('../helpers');
 
 module.exports = class HiddenController {
+    static async getUsers(data) {
+        const projection = database.raw(`
+            json_build_object (
+                'Id', "User"."Id",
+                'Name', "User"."Name",
+                'CreationDate', "User"."CreationDate",
+                'Banned', "User"."Banned",
+                'Email', "User"."Email",
+                'ProfilePicture', "User"."ProfilePicture",
+                'PostCount', "User"."PostCount",
+                'Signature', "User"."Signature",
+
+                'Badges', CASE WHEN MIN("Badge"."Id") IS NULL THEN '[]'::JSON ELSE
+                    json_agg(
+                        json_build_object(
+                            'Id', "Badge"."Id",
+                            'Name', "Badge"."Name",
+                            'Description', "Badge"."Description",
+                            'AssociationDate', "UserBadge"."AssociationDate"
+                        )
+                    )
+                END
+            ) as json
+        `);
+
+        const results = await database
+            .select(projection)
+            .from('User')
+            .leftOuterJoin('UserBadge', 'UserBadge.UserId', '=', 'User.Id')
+            .leftOuterJoin('Badge', 'Badge.Id', '=', 'UserBadge.BadgeId')
+            .where(this.getUsersConditions(data))
+            .groupBy('User.Id');
+
+        const users = results.map((row) => row.json);
+
+        const [{ count }] = await database
+            .select(database.raw('count(*)::integer'))
+            .from('User')
+            .where(this.getUsersConditions(data));
+
+        return { users, count };
+    }
+
+    static getUsersConditions(data) {
+        return function (query) {
+            if (data.name) {
+                query.whereRaw('lower("User"."Name") like concat(\'%\', lower(?), \'%\')', [data.name]);
+            }
+        };
+    }
+
+    static async me(data) {
+        if (isNaN(parseInt(data.userId))) {
+            throw new Error('userId est requis');
+        }
+
+        let projection = database.raw(`
+            json_build_object (
+                'Id', "User"."Id",
+                'Name', "User"."Name",
+                'CreationDate', "User"."CreationDate",
+                'Banned', "User"."Banned",
+                'Email', "User"."Email",
+                'ProfilePicture', "User"."ProfilePicture",
+                'PostCount', "User"."PostCount",
+                'Signature', "User"."Signature",
+
+                'Badges', CASE WHEN MIN("Badge"."Id") IS NULL THEN '[]'::JSON ELSE
+                    json_agg(
+                        json_build_object(
+                            'Id', "Badge"."Id",
+                            'Name', "Badge"."Name",
+                            'Description', "Badge"."Description",
+                            'AssociationDate', "UserBadge"."AssociationDate"
+                        )
+                    )
+                END
+            ) as json
+        `);
+
+        const [{ json: user }] = await database
+            .select(projection)
+            .from('User')
+            .leftOuterJoin('UserBadge', 'UserBadge.UserId', '=', 'User.Id')
+            .leftOuterJoin('Badge', 'Badge.Id', '=', 'UserBadge.BadgeId')
+            .where('User.Id', '=', data.userId)
+            .groupBy('User.Id');
+
+        if (!user) {
+            throw new Error('l\'utilisateur n\'existe pas');
+        }
+
+        projection = database.raw(`
+            json_build_object (
+                'Id', "HiddenTopic"."Id",
+                'Title', "HiddenTopic"."Title",
+                'CreationDate', "HiddenTopic"."CreationDate",
+                'LastPostCreationDate', "HiddenTopic"."LastPostCreationDate",
+                'JVCForumId', "HiddenTopic"."JVCForumId",
+
+                'User', json_build_object(
+                    'Id', "TopicAuthor"."Id",
+                    'Name', "TopicAuthor"."Name",
+                    'IsAdmin', "TopicAuthor"."IsAdmin",
+                    'ProfilePicture', "TopicAuthor"."ProfilePicture",
+                    'CreationDate', "TopicAuthor"."CreationDate",
+                    'Signature', "TopicAuthor"."Signature",
+                    'PostCount', "TopicAuthor"."PostCount"
+                ),
+
+                'Posts', json_agg(
+                    json_build_object (
+                        'Id', "QuotingPost"."Id",
+                        'Content', "QuotingPost"."Content",
+                        'CreationDate', "QuotingPost"."CreationDate",
+                        'ModificationDate', "QuotingPost"."ModificationDate",
+        
+                        'User', json_build_object(
+                            'Id', "QuotingUser"."Id",
+                            'Name', "QuotingUser"."Name",
+                            'IsAdmin', "QuotingUser"."IsAdmin",
+                            'ProfilePicture', "QuotingUser"."ProfilePicture",
+                            'CreationDate', "QuotingUser"."CreationDate",
+                            'Signature', "QuotingUser"."Signature",
+                            'PostCount', "QuotingUser"."PostCount",
+                            'IsModerator', "Moderator"."UserId" IS NOT NULL
+                        ),
+
+                        'QuotedPost', json_build_object(
+                            'Id', "QuotedPost"."Id",
+                            'Content', "QuotedPost"."Content",
+                            'CreationDate', "QuotedPost"."CreationDate",
+                            'ModificationDate', "QuotedPost"."ModificationDate",
+                            'Op', "QuotedPost"."Op",
+                            'Pinned', "QuotedPost"."Pinned",
+                            'QuotedPostId', "QuotedPost"."QuotedPostId",
+        
+                            'User', json_build_object(
+                                'Id', "QuotedUser"."Id",
+                                'Name', "QuotedUser"."Name",
+                                'IsAdmin', "QuotedUser"."IsAdmin",
+                                'Banned', "QuotedUser"."Banned",
+                                'ProfilePicture', "QuotedUser"."ProfilePicture",
+                                'CreationDate', "QuotedUser"."CreationDate",
+                                'Signature', "QuotedUser"."Signature",
+                                'PostCount', "QuotedUser"."PostCount"
+                            )
+                        )
+                    )
+                )
+            ) as json
+        `);
+
+        const rows = await database
+            .select(projection)
+            .from('QuoteNotification')
+            .leftJoin('HiddenPost AS QuotingPost', function () {
+                this.on('QuoteNotification.HiddenPostId', '=', 'QuotingPost.Id');
+            })
+            .leftJoin('User AS QuotingUser', function () {
+                this.on('QuotingUser.Id', '=', 'QuotingPost.UserId');
+            })
+            .leftJoin('HiddenTopic', function () {
+                this.on('HiddenTopic.Id', '=', 'QuotingPost.HiddenTopicId');
+            })
+            .leftJoin('User AS TopicAuthor', function () {
+                this.on('TopicAuthor.Id', '=', 'HiddenTopic.UserId');
+            })
+            .leftJoin('HiddenPost AS QuotedPost', function () {
+                this.on('QuotedPost.Id', '=', 'QuotingPost.QuotedPostId');
+            })
+            .leftJoin('User AS QuotedUser', function () {
+                this.on('QuotedUser.Id', '=', 'QuotedPost.UserId');
+            })
+            .leftJoin('Moderator', function () {
+                this.on('Moderator.UserId', '=', 'QuotingUser.Id');
+                this.andOn('Moderator.ForumId', '=', 'HiddenTopic.JVCForumId');
+            })
+            .where('QuoteNotification.UserId', '=', data.userId)
+            .groupBy('HiddenTopic.Id')
+            .groupBy('TopicAuthor.Id');
+        // .orderBy('HiddenPost.CreationDate', 'DESC');
+
+        const notifications = rows.map((r) => r.json);
+
+        return { user, notifications };
+    }
+
     static async getUser(data) {
         if (typeof data.userName !== 'string') {
             throw new Error('userName est requis');
         }
 
-        const [user] = await database
-            .select('*')
-            .from(database.raw('"UserJson"(?)', [data.userName]));
+        const projection = database.raw(`
+            json_build_object (
+                'Id', "User"."Id",
+                'Name', "User"."Name",
+                'CreationDate', "User"."CreationDate",
+                'Banned', "User"."Banned",
+                'Email', "User"."Email",
+                'ProfilePicture', "User"."ProfilePicture",
+                'PostCount', "User"."PostCount",
+                'Signature', "User"."Signature",
 
-        if (!user) {
+                'Badges', CASE WHEN MIN("Badge"."Id") IS NULL THEN '[]'::JSON ELSE
+                    json_agg(
+                        json_build_object(
+                            'Id', "Badge"."Id",
+                            'Name', "Badge"."Name",
+                            'Description', "Badge"."Description",
+                            'AssociationDate', "UserBadge"."AssociationDate"
+                        )
+                    )
+                END
+            ) as json
+        `);
+
+        let request = undefined;
+        const results = await database
+            .select(projection)
+            .from('User')
+            .leftOuterJoin('UserBadge', 'UserBadge.UserId', '=', 'User.Id')
+            .leftOuterJoin('Badge', 'Badge.Id', '=', 'UserBadge.BadgeId')
+            .where('User.Name', '=', data.userName)
+            .groupBy('User.Id')
+            .on('query', function () {
+                if (data.debug === '1') {
+                    request = this.toString();
+                }
+            });
+
+        if (results.length === 0) {
             throw new Error('Utilisateur introuvable');
         }
 
-        return user.UserJson;
+        const user = results[0].json;
+
+        return { user, request };
     }
 
     static async updateUser(data) {

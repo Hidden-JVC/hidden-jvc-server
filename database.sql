@@ -10,6 +10,7 @@ CREATE TABLE "User" (
     "ProfilePicture" CHARACTER VARYING(200) NULL,
     "Signature" CHARACTER VARYING(400) NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
+    "PostCount" INTEGER NOT NULL DEFAULT 0,
 
     PRIMARY KEY ("Id")
 );
@@ -20,6 +21,7 @@ CREATE TABLE "Badge" (
     "Id" SERIAL,
     "Name" CHARACTER VARYING(50) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
+    "Description" CHARACTER VARYING(500) NOT NULL,
 
     PRIMARY KEY ("Id")
 );
@@ -46,16 +48,18 @@ CREATE TABLE "Session" (
 CREATE TABLE "JVCForum" (
     "Id" INTEGER NOT NULL, -- Native JVC forum id
     "Name" CHARACTER VARYING(200) NOT NULL,
+    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
 
     PRIMARY KEY ("Id")
 );
 
 CREATE TYPE "ModerationAction" AS ENUM (
-    'Delete', 'ModifyTag',
+    'DeleteTopic', 'DeletePost',
     'Pin', 'UnPin',
     'Lock', 'UnLock',
     'BanIp', 'UnBanIp',
-    'BanAccount', 'UnBanAccount'
+    'BanAccount', 'UnBanAccount',
+    'ModifyTag'
 );
 
 CREATE TABLE "Moderator" (
@@ -68,23 +72,13 @@ CREATE TABLE "Moderator" (
     FOREIGN KEY ("ForumId") REFERENCES "JVCForum" ("Id") ON DELETE CASCADE
 );
 
-CREATE TABLE "ModerationLog" (
-    "Id" SERIAL,
-    "Action" "ModerationAction" NOT NULL,
-    "Reason" CHARACTER VARYING(300) NULL,
-    "UserId" INTEGER NULL,
-    "Date" TIMESTAMP NOT NULL DEFAULT NOW()::timestamp(0),
-    "Label" CHARACTER VARYING(500) NOT NULL,
-
-    PRIMARY KEY ("Id"),
-    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE SET NULL
-);
-
 CREATE TABLE "JVCTopic" (
     "Id" INTEGER NOT NULL, -- Native JVC topic id
     "Title" CHARACTER VARYING(100) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL,
-    "IsTitleSafe" BOOLEAN DEFAULT FALSE,
+    "IsTitleVerified" BOOLEAN DEFAULT FALSE,
+    "PostCount" INTEGER NOT NULL DEFAULT 1, -- updated by trigger: UpdateHiddenTopicLastPostDate
+    "LastPostCreationDate" TIMESTAMP NOT NULL DEFAULT NOW(), -- updated by trigger: UpdateHiddenTopicLastPostDate
 
     "FirstPostContent" CHARACTER VARYING(8000) NOT NULL,
     "FirstPostUsername" CHARACTER VARYING(15) NOT NULL,
@@ -106,7 +100,6 @@ CREATE TABLE "JVCPost" (
     "Ip" INET NULL,
 
     "UserId" INTEGER NULL,
-    "Username" CHARACTER VARYING(15) NULL,
 
     "JVCTopicId" INTEGER NOT NULL,
 
@@ -119,12 +112,13 @@ CREATE TABLE "HiddenTopic" (
     "Id" SERIAL,
     "Title" CHARACTER VARYING(100) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
+    "DeletionDate" TIMESTAMP NULL,
     "Pinned" BOOLEAN NOT NULL DEFAULT FALSE,
     "Locked" BOOLEAN NOT NULL DEFAULT FALSE,
-    "JVCBackup" BOOLEAN NOT NULL DEFAULT FALSE, -- Si TRUE alors le topic est un backup d'un vrai topic jvc qui a été supprimé
+    "PostCount" INTEGER NOT NULL DEFAULT 1, -- updated by trigger: UpdateHiddenTopicLastPostDate
+    "LastPostCreationDate" TIMESTAMP NOT NULL DEFAULT NOW(), -- updated by trigger: UpdateHiddenTopicLastPostDate
 
-    "UserId" INTEGER NULL, -- logged in user
-    "Username" CHARACTER VARYING(15) NULL, -- anonymous user
+    "UserId" INTEGER NULL,
     "JVCForumId" INTEGER NOT NULL,
 
     PRIMARY KEY ("Id"),
@@ -137,7 +131,7 @@ CREATE INDEX "HiddenTopic_LowerTitle_Index" ON "HiddenTopic"(lower("Title"));
 CREATE TABLE "TopicTag" (
     "Id" SERIAL,
     "Name" CHARACTER VARYING(100) NOT NULL,
-    "Color" CHARACTER VARYING(15) NULL,
+    "Color" CHARACTER VARYING(15) NOT NULL,
 
     PRIMARY KEY ("Id")
 );
@@ -157,21 +151,52 @@ CREATE TABLE "HiddenPost" (
     "Content" CHARACTER VARYING(16000) NOT NULL,
     "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
     "ModificationDate" TIMESTAMP NULL,
+    "DeletionDate" TIMESTAMP NULL,
     "Op" BOOLEAN NOT NULL DEFAULT FALSE,
     "Pinned" BOOLEAN NOT NULL DEFAULT FALSE,
     "Ip" INET NULL,
 
-    "UserId" INTEGER NULL,  -- logged in user
-    "Username" CHARACTER VARYING(15) NULL, -- anonymous user
+    "UserId" INTEGER NULL,
+    "QuotedPostId" INTEGER NULL,
 
     "HiddenTopicId" INTEGER NOT NULL,
 
     PRIMARY KEY ("Id"),
     FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE SET NULL,
+    FOREIGN KEY ("QuotedPostId") REFERENCES "HiddenPost" ("Id") ON DELETE SET NULL,
     FOREIGN KEY ("HiddenTopicId") REFERENCES "HiddenTopic" ("Id") ON DELETE CASCADE
 );
 
 CREATE INDEX "HiddenPost_TopicId_Index" ON "HiddenPost" ("HiddenTopicId");
+
+CREATE TABLE "Report" (
+    "Id" SERIAL,
+    "CreationDate" TIMESTAMP NOT NULL DEFAULT NOW(),
+    "Reason" CHARACTER VARYING(2000) NOT NULL,
+    "Comment" CHARACTER VARYING(2000) NOT NULL,
+    "UserId" INTEGER NULL,
+
+    PRIMARY KEY ("Id"),
+    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE SET NULL
+);
+
+CREATE TABLE "ModerationLog" (
+    "Id" SERIAL,
+    "Action" "ModerationAction" NOT NULL,
+    "Reason" CHARACTER VARYING(300) NULL,
+    "UserId" INTEGER NOT NULL,
+    "ForumId" INTEGER NOT NULL,
+    "JVCTopicId" INTEGER NULL,
+    "HiddenTopicId" INTEGER NULL,
+    "Date" TIMESTAMP NOT NULL DEFAULT NOW()::TIMESTAMP(0),
+    "Label" CHARACTER VARYING(500) NOT NULL,
+
+    PRIMARY KEY ("Id"),
+    FOREIGN KEY ("UserId") REFERENCES "User" ("Id"),
+    FOREIGN KEY ("JVCTopicId") REFERENCES "JVCTopic" ("Id"),
+    FOREIGN KEY ("HiddenTopicId") REFERENCES "HiddenTopic" ("Id"),
+    FOREIGN KEY ("ForumId") REFERENCES "JVCForum" ("Id")
+);
 
 CREATE TABLE "Survey" (
     "Id" SERIAL,
@@ -182,6 +207,15 @@ CREATE TABLE "Survey" (
 
     PRIMARY KEY ("Id"),
     FOREIGN KEY ("HiddenTopicId") REFERENCES "HiddenTopic" ("Id") ON DELETE CASCADE
+);
+
+CREATE TABLE "QuoteNotification" (
+    "UserId" INTEGER NOT NULL,
+    "HiddenPostId" INTEGER NOT NULL,
+    "Seen" BOOLEAN NOT NULL DEFAULT FALSE,
+
+    FOREIGN KEY ("UserId") REFERENCES "User" ("Id") ON DELETE CASCADE,
+    FOREIGN KEY ("HiddenPostId") REFERENCES "HiddenPost" ("Id") ON DELETE CASCADE
 );
 
 CREATE TABLE "SurveyOption" (
@@ -215,132 +249,55 @@ CREATE TABLE "BannedIp" (
     PRIMARY KEY ("Ip")
 );
 
-CREATE OR REPLACE FUNCTION "UserJson" (
-    IN "_UserName" VARCHAR
-) RETURNS SETOF JSON AS
+CREATE OR REPLACE FUNCTION "UpdateHiddenTopicLastPostDate" ()
+RETURNS TRIGGER AS
 $BODY$
     BEGIN
-        RETURN QUERY SELECT json_build_object(
-            'User', json_build_object (
-                'Id', "User"."Id",
-                'Name', "User"."Name",
-                'CreationDate', "User"."CreationDate",
-                'Banned', "User"."Banned",
-                'Email', "User"."Email",
-                'ProfilePicture', "User"."ProfilePicture",
-                'Signature', "User"."Signature"
-            ),
-            'Badges',CASE WHEN MIN("Badge"."Id") IS NULL THEN '[]'::JSON ELSE
-                json_agg(
-                    json_build_object(
-                        'Id', "Badge"."Id",
-                        'Name', "Badge"."Name",
-                        'AssociationDate', "UserBadge"."AssociationDate"
-                    )
-                ) END
-        )
-        FROM "User"
-        LEFT JOIN "UserBadge"
-            ON "User"."Id" = "UserBadge"."UserId"
-        LEFT JOIN "Badge"
-            ON "Badge"."Id" = "UserBadge"."BadgeId"
-        WHERE "User"."Name" = "_UserName"
-        GROUP BY "User"."Id";
+        UPDATE "HiddenTopic"
+        SET
+            "LastPostCreationDate" = NEW."CreationDate",
+            "PostCount" = (SELECT COUNT(*) FROM "HiddenPost" WHERE "HiddenTopicId" = NEW."HiddenTopicId")
+        WHERE "Id" = NEW."HiddenTopicId";
+
+        UPDATE "User"
+        SET "PostCount" =
+            (SELECT COUNT(*) FROM "HiddenPost" WHERE "UserId" = "User"."Id") +
+            (SELECT COUNT(*) FROM "JVCPost" WHERE "UserId" = "User"."Id");
+
+        RETURN NEW;
     END
 $BODY$
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION "ModerationLogJson" (
-	IN "_Offset" INTEGER DEFAULT 0,
-    IN "_Limit" INTEGER DEFAULT 20,
-    IN "_UserId" INTEGER DEFAULT NULL
-) RETURNS SETOF JSON AS
+CREATE TRIGGER "Trigger_UpdateHiddenTopicLastPostDate"
+AFTER INSERT OR DELETE ON "HiddenPost"
+FOR EACH ROW
+EXECUTE FUNCTION "UpdateHiddenTopicLastPostDate"();
+
+CREATE OR REPLACE FUNCTION "UpdateJVCTopicLastPostDate" ()
+RETURNS TRIGGER AS
 $BODY$
     BEGIN
-        RETURN QUERY SELECT json_build_object(
-            'ModerationLog', "ModerationLog".*,
-            'User', json_build_object (
-                'Name', "User"."Name"
-            )
-        )
-        FROM "ModerationLog"
-        INNER JOIN "User"
-            ON "ModerationLog"."UserId" = "User"."Id"
-        WHERE ("_UserId" IS NULL OR "_UserId" = "User"."Id")
-        ORDER BY "ModerationLog"."Date" DESC
-        OFFSET "_Offset"
-        LIMIT "_Limit";
+        UPDATE "JVCTopic"
+        SET
+            "LastPostCreationDate" = NEW."CreationDate",
+            "PostCount" = (SELECT COUNT(*) FROM "JVCPost" WHERE "JVCTopicId" = NEW."JVCTopicId")
+        WHERE "Id" = NEW."JVCTopicId";
+
+        UPDATE "User"
+        SET "PostCount" =
+            (SELECT COUNT(*) FROM "HiddenPost" WHERE "UserId" = "User"."Id") +
+            (SELECT COUNT(*) FROM "JVCPost" WHERE "UserId" = "User"."Id");
+
+        RETURN NEW;
     END
 $BODY$
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION "JVCForumListJson" (
-    IN "_Offset" INTEGER DEFAULT 0,
-    IN "_Limit" INTEGER DEFAULT 20
-) RETURNS SETOF JSON AS
-$BODY$
-    BEGIN
-        RETURN QUERY SELECT json_build_object(
-            'Forum', "JVCForum".*,
-			'JVCTopicCount', (
-				SELECT COUNT(*)
-				FROM "JVCTopic"
-			    WHERE "JVCForumId" = "JVCForum"."Id"
-			 ),
-			'JVCPostCount', (
-				SELECT COUNT(*)
-				FROM "JVCPost"
-				JOIN "JVCTopic"
-					ON "JVCTopic"."Id" = "JVCPost"."JVCTopicId"
-				WHERE  "JVCTopic"."JVCForumId" = "JVCForum"."Id"
-			),
-			'HiddenTopicCount', (
-				SELECT COUNT(*)
-				FROM "HiddenTopic"
-				WHERE "JVCForumId" = "JVCForum"."Id"
-		 	),
-			'HiddenPostCount', (
-				SELECT COUNT(*)
-				FROM "HiddenPost"
-				JOIN "HiddenTopic"
-					ON "HiddenTopic"."Id" = "HiddenPost"."HiddenTopicId"
-				WHERE  "HiddenTopic"."JVCForumId" = "JVCForum"."Id"
-		 	)
-		)
-        FROM "JVCForum"
-        OFFSET "_Offset"
-        LIMIT "_Limit";
-    END
-$BODY$
-LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION "JVCForumJson" (
-    IN "_ForumId" INTEGER
-) RETURNS SETOF JSON AS
-$BODY$
-    BEGIN
-        RETURN QUERY SELECT json_build_object (
-            'Forum', "JVCForum".*,
-            'Moderators', CASE WHEN MIN("Moderator"."ForumId") IS NOT NULL THEN json_agg (
-                json_build_object (
-                    'Id', "User"."Id",
-                    'Name', "User"."Name"
-                )
-            ) ELSE '[]'::json END,
-            'Tags', (
-                SELECT json_agg(json_build_object('Id', "Id", 'Name', "Name", 'Color', "Color")) FROM "TopicTag"
-            )
-        )
-        FROM "JVCForum"
-        LEFT JOIN "Moderator"
-            ON "Moderator"."ForumId" = "JVCForum"."Id"
-        LEFT JOIN "User"
-            ON "User"."Id" = "Moderator"."UserId"
-        WHERE "JVCForum"."Id" = "_ForumId"
-        GROUP BY "JVCForum"."Id";
-    END
-$BODY$
-LANGUAGE plpgsql;
+CREATE TRIGGER "Trigger_UpdateJVCTopicLastPostDate"
+AFTER INSERT OR DELETE ON "JVCPost"
+FOR EACH ROW
+EXECUTE FUNCTION "UpdateJVCTopicLastPostDate"();
 
 CREATE OR REPLACE FUNCTION "JVCTopicListJson" (
 	IN "_TopicIds" CHARACTER VARYING DEFAULT NULL -- comma separated list of JVCTopic Id
@@ -375,17 +332,14 @@ $BODY$
                             'Content', "JVCPost"."Content",
                             'CreationDate', "JVCPost"."CreationDate",
                             'ModificationDate', "JVCPost"."ModificationDate",
-                            'Username', "JVCPost"."Username",
                             'Page', "JVCPost"."Page"
                         ),
-                        'User', CASE WHEN "PostUser"."Id" IS NULL
-                            THEN NULL
-                            ELSE json_build_object(
-                                'Id', "PostUser"."Id",
-                                'Name', "PostUser"."Name",
-					            'IsAdmin', "PostUser"."IsAdmin",
-					            'IsModerator', "PostModerator"."UserId" IS NOT NULL OR "PostUser"."IsAdmin"
-                            ) END
+                        'User', json_build_object(
+                            'Id', "PostUser"."Id",
+                            'Name', "PostUser"."Name",
+                            'IsAdmin', "PostUser"."IsAdmin",
+                            'IsModerator', "PostModerator"."UserId" IS NOT NULL
+                        )
                     ) ORDER BY "JVCPost"."CreationDate" ASC
                 ) END,
 			'Pages', (SELECT array_agg(DISTINCT "Page") FROM "JVCPost" WHERE "JVCPost"."JVCTopicId" = "JVCTopic"."Id")
@@ -416,159 +370,23 @@ $BODY$
 $BODY$
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION "HiddenTopicListJson" (
-    IN "_ForumId" INTEGER,
-    IN "_Pinned" BOOLEAN DEFAULT NULL,
-    IN "_Offset" INTEGER DEFAULT 0,
-    IN "_Limit" INTEGER DEFAULT 20,
-    IN "_startDate" TIMESTAMP DEFAULT NULL,
-    IN "_endDate" TIMESTAMP DEFAULT NULL,
-	IN "_Search" CHARACTER VARYING DEFAULT NULL,
-	IN "_SearchType" CHARACTER VARYING DEFAULT NULL
-) RETURNS SETOF JSON AS
-$BODY$
-    BEGIN
-        RETURN QUERY SELECT json_build_object(
-            'Topic', "HiddenTopic".*,
-            'LastPostDate', "LastHiddenPost"."CreationDate",
-            'Author', CASE WHEN "TopicAuthor"."Id" IS NULL
-				THEN NULL
-                ELSE json_build_object(
-					'Id', "TopicAuthor"."Id",
-					'Name', "TopicAuthor"."Name",
-                    'IsAdmin', "TopicAuthor"."IsAdmin",
-					'IsModerator', "AuthorModerator"."UserId" IS NOT NULL
-				)
-			END,
-			'Tags', COALESCE((
-                SELECT json_agg(json_build_object('Id', "Id", 'Name', "Name", 'Color', "Color", 'Locked', "Locked"))
-                FROM "TopicTag"
-                JOIN "HiddenTopicTag"
-                ON "TopicTag"."Id" = "HiddenTopicTag"."TagId"
-                AND "HiddenTopicTag"."TopicId" = "HiddenTopic"."Id"
-            ), '[]'::JSON),
-			'PostsCount', (
-                SELECT COUNT(*)
-                FROM "HiddenPost"
-                WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
-            ) - 1
-		)
-        FROM "HiddenTopic"
-        LEFT JOIN "User" AS "TopicAuthor"
-            ON "TopicAuthor"."Id" = "HiddenTopic"."UserId"
-        LEFT JOIN "Moderator" AS "AuthorModerator"
-            ON "AuthorModerator"."UserId" = "HiddenTopic"."UserId" AND "AuthorModerator"."ForumId" = "HiddenTopic"."JVCForumId"
-		CROSS JOIN LATERAL (
-			SELECT MAX("CreationDate") AS "CreationDate"
-			FROM "HiddenPost"
-			WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
-		) "LastHiddenPost"
-        WHERE "HiddenTopic"."JVCForumId" = "_ForumId"
-        AND ("_startDate" IS NULL OR "LastHiddenPost"."CreationDate" <= "_startDate")
-        AND ("_endDate" IS NULL OR "LastHiddenPost"."CreationDate" >= "_endDate")
-        AND ("_Pinned" IS NULL OR "HiddenTopic"."Pinned" = "_Pinned")
-        AND ("_Search" IS NULL OR "_SearchType" <> 'Title' OR lower("HiddenTopic"."Title") LIKE concat('%', lower("_Search"), '%'))
-        AND ("_Search" IS NULL OR "_SearchType" <> 'Author' OR lower("TopicAuthor"."Name") LIKE concat('%', lower("_Search"), '%'))
-        AND ("_Search" IS NULL OR "_SearchType" <> 'Tags' OR "HiddenTopic"."Id" IN
-            (SELECT "TopicId" FROM "HiddenTopicTag" GROUP BY "TopicId" HAVING array_agg("TagId") @>  string_to_array("_Search", ',')::INTEGER[])
-        )
-        ORDER BY "HiddenTopic"."Pinned" DESC, "LastHiddenPost"."CreationDate" DESC
-        OFFSET "_Offset"
-        LIMIT "_Limit";
-    END
-$BODY$
-LANGUAGE plpgsql;
+INSERT INTO "TopicTag" ("Name", "Color")
+VALUES
+    ('Porn', 'pink lighten-3'),
+    ('Gore', 'black'),
+    ('Politique', 'blue darken-2'),
+    ('Fic', 'orange darken-1'),
+    ('Boucle', 'red'),
+    ('TALC', 'purple');
 
-CREATE OR REPLACE FUNCTION "HiddenTopicPostsJson" (
-    IN "_TopicId" INTEGER,
-    IN "_PostOffset" INTEGER DEFAULT 0,
-    IN "_PostLimit" INTEGER DEFAULT 20,
-    IN "_UserId" INTEGER DEFAULT NULL -- Used to only get post from a single user
-) RETURNS SETOF JSON AS
-$BODY$
-    BEGIN
-        RETURN QUERY SELECT json_build_object(
-            'Topic', "HiddenTopic".*,
-            'Author', CASE WHEN "User"."Id" IS NULL THEN NULL
-                ELSE json_build_object(
-                    'Id', "User"."Id",
-                    'Name', "User"."Name"
-                )
-                END,
-            'Tags', COALESCE((
-                SELECT json_agg(json_build_object('Id', "Id", 'Name', "Name", 'Color', "Color", 'Locked', "Locked"))
-                FROM "TopicTag"
-                JOIN "HiddenTopicTag"
-                ON "TopicTag"."Id" = "HiddenTopicTag"."TagId"
-                AND "HiddenTopicTag"."TopicId" = "HiddenTopic"."Id"
-            ), '[]'::JSON),
-            'Posts', json_agg(
-                json_build_object(
-                    'Post', json_build_object(
-                            'Id', "HiddenPost"."Id",
-                            'Content', "HiddenPost"."Content",
-                            'CreationDate', "HiddenPost"."CreationDate",
-                            'ModificationDate', "HiddenPost"."ModificationDate",
-                            'Op', "HiddenPost"."Op",
-                            'Pinned', "HiddenPost"."Pinned",
-                            'Username', "HiddenPost"."Username",
-                            'IpBanned', "BannedIp"."Ip" IS NOT NULL
-                        ),
-                    'User', CASE WHEN "PostUser"."Id" IS NULL THEN NULL
-                        ELSE json_build_object(
-                            'Id', "PostUser"."Id",
-                            'Name', "PostUser"."Name",
-                            'IsAdmin', "PostUser"."IsAdmin",
-                            'Banned', "PostUser"."Banned",
-                            'ProfilePicture', "PostUser"."ProfilePicture",
-                            'Signature', "PostUser"."Signature",
-                            'IsModerator', "PostModerator"."UserId" IS NOT NULL
-                        )
-                        END
-                ) ORDER BY "HiddenPost"."Op" DESC, "HiddenPost"."Pinned" DESC, "HiddenPost"."CreationDate" ASC
-            ),
-            'PostsCount', MIN("HiddenPost"."Count")
-        )
-        FROM "HiddenTopic"
-        LEFT JOIN "User" ON "User"."Id" = "HiddenTopic"."UserId"
-        LEFT JOIN LATERAL (
-            SELECT *, COUNT(*) OVER() AS "Count"
-            FROM "HiddenPost"
-            WHERE "HiddenPost"."HiddenTopicId" = "HiddenTopic"."Id"
-            AND ("_UserId" IS NULL OR ("HiddenPost"."UserId" = "_UserId"))
-            ORDER BY "HiddenPost"."Op" DESC, "HiddenPost"."Pinned" DESC, "HiddenPost"."CreationDate" ASC
-            OFFSET "_PostOffset"
-            LIMIT "_PostLimit"
-        ) "HiddenPost" ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT *
-            FROM "User"
-            WHERE "User"."Id" = "HiddenPost"."UserId"
-        ) "PostUser" ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT *
-            FROM "BannedIp"
-            WHERE "BannedIp"."Ip" = "HiddenPost"."Ip"
-        ) "BannedIp" ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT "UserId"
-            FROM "Moderator"
-            WHERE "Moderator"."UserId" = "PostUser"."Id"
-            AND "Moderator"."ForumId" = "HiddenTopic"."JVCForumId"
-        ) "PostModerator" ON TRUE
-        WHERE "HiddenTopic"."Id" = "_TopicId"
-        GROUP BY "HiddenTopic"."Id", "User"."Id";
-    END
-$BODY$
-LANGUAGE plpgsql;
+INSERT INTO "Badge" ("Name", "Description")
+VALUES
+    ('Bêta-Testeur', 'Avoir été là lors de la bêta');
 
-INSERT INTO "TopicTag" ("Name", "Color") VALUES ('Porn', 'pink lighten-3'), ('Gore', 'black'), ('Politique', 'blue darken-2'), ('Fic', 'orange darken-1'), ('Boucle', 'red ')
-
-SELECT
-	(SELECT COUNT(*) FROM "HiddenTopic") AS "HiddenTopicCount",
-	(SELECT COUNT(*) FROM "HiddenTopic" WHERE "CreationDate" >= NOW() - INTERVAL '24 HOURS') AS "HiddenTopicCountLast24Hours",
-	(SELECT COUNT(*) FROM "HiddenPost") AS "HiddenPostCount",
-	(SELECT COUNT(*) FROM "JVCTopic") AS "JVCTopicCount",
-	(SELECT COUNT(*) FROM "JVCPost") AS "JVCPostCount",
-	(SELECT COUNT(*) FROM "User") AS "UserCount"
-
+-- SELECT
+-- 	(SELECT COUNT(*) FROM "HiddenTopic") AS "HiddenTopicCount",
+-- 	(SELECT COUNT(*) FROM "HiddenTopic" WHERE "CreationDate" >= NOW() - INTERVAL '24 HOURS') AS "HiddenTopicCountLast24Hours",
+-- 	(SELECT COUNT(*) FROM "HiddenPost") AS "HiddenPostCount",
+-- 	(SELECT COUNT(*) FROM "JVCTopic") AS "JVCTopicCount",
+-- 	(SELECT COUNT(*) FROM "JVCPost") AS "JVCPostCount",
+-- 	(SELECT COUNT(*) FROM "User") AS "UserCount"
